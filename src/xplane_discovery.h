@@ -6,7 +6,8 @@
 #include <cstdint>
 
 // X-Plane broadcasts BECN packets on this port every ~1 second
-#define XPLANE_BEACON_PORT 49707
+#define XPLANE_BEACON_PORT      49707
+#define XPLANE_MULTICAST_ADDR   IPAddress(239, 255, 1, 1)
 
 class XPlaneDiscovery {
 public:

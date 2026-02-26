@@ -4,9 +4,12 @@
 #include <cstring>
 
 void XPlaneDiscovery::begin() {
-    _udp.begin(XPLANE_BEACON_PORT);
+    // Join multicast group 239.255.1.1 — X-Plane sends BECN to this group
+    // beginMulticast also binds to the port, so broadcast packets are received too
+    _udp.beginMulticast(XPLANE_MULTICAST_ADDR, XPLANE_BEACON_PORT);
     _begun = true;
     _found = false;
+    Serial.println("[Discovery] Listening for X-Plane BECN on 239.255.1.1:49707");
 }
 
 bool XPlaneDiscovery::listen() {
@@ -16,11 +19,18 @@ bool XPlaneDiscovery::listen() {
     int packetSize = _udp.parsePacket();
     if (packetSize < 6) return false;
 
+    Serial.printf("[Discovery] Received %d bytes from %s:%d\n",
+                  packetSize, _udp.remoteIP().toString().c_str(), _udp.remotePort());
+
     int bytesRead = _udp.read(_rxBuf, sizeof(_rxBuf));
     if (bytesRead < 6) return false;
 
     // BECN packet: "BECN\0" (5 bytes) + beacon data
-    if (memcmp(_rxBuf, "BECN", 4) != 0) return false;
+    if (memcmp(_rxBuf, "BECN", 4) != 0) {
+        Serial.printf("[Discovery] Not a BECN packet (header: %c%c%c%c)\n",
+                      _rxBuf[0], _rxBuf[1], _rxBuf[2], _rxBuf[3]);
+        return false;
+    }
 
     // Beacon data structure (after 5-byte header):
     //   uint8_t  beacon_major_version (offset 5)
@@ -52,6 +62,9 @@ bool XPlaneDiscovery::listen() {
 
     // The sender's IP is the X-Plane host
     _ip = _udp.remoteIP();
+
+    Serial.printf("[Discovery] Found X-Plane %d at %s:%d (%s)\n",
+                  _version, _ip.toString().c_str(), _port, _name);
 
     // Stop listening — we found it
     _udp.stop();
