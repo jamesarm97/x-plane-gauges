@@ -80,12 +80,6 @@ public:
         snprintf(buf, sizeof(buf), "%c %d %05.2f'", ew, lonDeg, lonMin);
         canvas->drawString(buf, CENTER_X, CENTER_Y + 30);
 
-        // ── Decimal readout at bottom ──
-        canvas->setTextSize(0.7);
-        canvas->setTextColor(COLOR_DIAL_RIM);
-        snprintf(buf, sizeof(buf), "%.4f, %.4f", lat, lon);
-        canvas->drawString(buf, CENTER_X, CENTER_Y + 58);
-
         return true;
     }
 };

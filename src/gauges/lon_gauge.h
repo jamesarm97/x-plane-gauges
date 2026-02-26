@@ -62,12 +62,6 @@ public:
         snprintf(buf, sizeof(buf), "%06.3f'", minutes);
         canvas->drawString(buf, CENTER_X, CENTER_Y + 25);
 
-        // Full decimal degrees at bottom
-        canvas->setTextSize(0.8);
-        canvas->setTextColor(COLOR_DIAL_RIM);
-        snprintf(buf, sizeof(buf), "%.5f", lon);
-        canvas->drawString(buf, CENTER_X, CENTER_Y + 55);
-
         return true;
     }
 };
