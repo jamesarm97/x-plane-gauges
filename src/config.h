@@ -1,5 +1,8 @@
 #pragma once
 
+// ── Version ────────────────────────────────────────────────────────
+#define FW_VERSION "1.0.0"
+
 // ── X-Plane Configuration ───────────────────────────────────────────
 #define XPLANE_PORT   49000             // X-Plane UDP port (default, overridden by beacon)
 #define XPLANE_FREQ   10                // Dataref update frequency in Hz
@@ -45,3 +48,10 @@
 #define COLOR_ARC_WHITE   0xFFFF  // White
 #define COLOR_SELECTOR_BG 0x0000  // Black overlay
 #define COLOR_SELECTOR_FG 0x07FF  // Cyan text
+
+// ── Warning Beeper ─────────────────────────────────────────────────
+#define WARNING_BEEP_FREQ     880.0f   // Hz (A5 note)
+#define WARNING_BEEP_ON_MS    200      // Beep duration
+#define WARNING_BEEP_OFF_MS   300      // Silence between beeps
+#define WARNING_VOLUME        80       // Speaker volume (0-255)
+#define MUTE_HOLD_MS          1000     // Hold button this long to toggle mute

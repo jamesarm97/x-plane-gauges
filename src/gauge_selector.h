@@ -15,6 +15,7 @@ public:
     int  currentIndex() const { return _currentIndex; }
     GaugeBase* currentGauge() const { return g_gauges[_currentIndex]; }
     bool selectionChanged();          // Returns true once after gauge changes
+    bool isSelecting() const { return _selecting; }
 
 private:
     XPlaneClient* _client = nullptr;

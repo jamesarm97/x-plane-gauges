@@ -17,6 +17,8 @@ Rotate the dial to browse through 21 different flight instruments rendered on th
 - **Connection status indicator** — green/red dot shows live X-Plane link status
 - **Double-buffered rendering** — flicker-free sprite-based display updates
 - **Multi-SSID support** — configure multiple WiFi networks; device auto-connects to the strongest available
+- **Audio warnings** — speaker beeps when gauge value enters a red danger zone (overspeed, over-temp, low fuel, etc.)
+- **Mute control** — press and hold the dial button for 1 second to toggle audio mute
 - **Auto-reconnect** on WiFi or X-Plane connection loss
 
 ## Hardware
@@ -63,6 +65,7 @@ Rotate the dial to browse through 21 different flight instruments rendered on th
 - **Power on** — the device connects to WiFi, then listens for X-Plane's beacon broadcast
 - **Rotate the dial** — browse through available gauges (every detent click changes the gauge)
 - **Gauge auto-confirms** after 3 seconds of inactivity on the selector
+- **Press and hold the button** (1 second) — toggle audio warning mute; a "MUTE" indicator appears at the top of the display when muted
 
 ## How It Works
 
@@ -81,6 +84,7 @@ src/
 ├── xplane_client.h/cpp      # RREF UDP protocol (subscribe/receive datarefs)
 ├── gauge_renderer.h/cpp     # Sprite-based gauge rendering engine
 ├── gauge_selector.h/cpp     # Rotary encoder gauge selection UI
+├── warning_beeper.h         # Audio warning system for red zone alerts
 └── gauges/
     ├── gauge_base.h         # GaugeConfig struct and GaugeBase class
     ├── gauge_registry.h     # All gauge instances and registry array
@@ -118,6 +122,11 @@ WiFi credentials are in `src/wifi_credentials.h` (see Setup). Other settings in 
 | `TARGET_FPS` | 30 | Display refresh rate |
 | `SMOOTH_ALPHA` | 0.15 | Needle smoothing factor (0–1) |
 | `SELECTOR_TIMEOUT_MS` | 3000 | Auto-confirm gauge selection (ms) |
+| `WARNING_BEEP_FREQ` | 880 | Warning tone frequency in Hz (A5 note) |
+| `WARNING_BEEP_ON_MS` | 200 | Warning beep duration (ms) |
+| `WARNING_BEEP_OFF_MS` | 300 | Silence between beeps (ms) |
+| `WARNING_VOLUME` | 80 | Speaker volume (0–255) |
+| `MUTE_HOLD_MS` | 1000 | Button hold time to toggle mute (ms) |
 
 ## Dependencies
 

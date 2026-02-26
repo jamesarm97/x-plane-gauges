@@ -6,6 +6,7 @@
 #include "xplane_client.h"
 #include "gauge_renderer.h"
 #include "gauge_selector.h"
+#include "warning_beeper.h"
 #include "gauges/position_gauge.h"
 
 // ── Application State ───────────────────────────────────────────────
@@ -21,6 +22,7 @@ static XPlaneDiscovery   g_discovery;
 static XPlaneClient      g_xplane;
 static GaugeRenderer     g_renderer;
 static GaugeSelector     g_selector;
+static WarningBeeper     g_beeper;
 
 // ── Discovered X-Plane address (stored as string for XPlaneClient) ──
 static char g_xplaneIP[20] = {0};
@@ -41,6 +43,10 @@ static bool g_secondaryActive = false;
 // ── Discovery timing ────────────────────────────────────────────────
 static unsigned long g_discoveryStart = 0;
 
+// ── Mute long-press tracking ───────────────────────────────────────
+static bool g_muteHoldTriggered = false;
+static unsigned long g_muteFlashEnd = 0;
+
 // ── Forward declarations ────────────────────────────────────────────
 void handleWiFiConnecting();
 void handleDiscovering();
@@ -59,8 +65,10 @@ void setup() {
     M5Dial.Display.setTextSize(1.5);
     M5Dial.Display.drawString("X-Plane Gauge", CENTER_X, CENTER_Y - 15);
     M5Dial.Display.setTextSize(1.0);
+    M5Dial.Display.setTextColor(COLOR_DIAL_RIM);
+    M5Dial.Display.drawString("v" FW_VERSION, CENTER_X, CENTER_Y + 10);
     M5Dial.Display.setTextColor(COLOR_LABEL);
-    M5Dial.Display.drawString("Initializing...", CENTER_X, CENTER_Y + 20);
+    M5Dial.Display.drawString("Initializing...", CENTER_X, CENTER_Y + 30);
     delay(500);
 
     g_wifi.begin(WIFI_NETWORKS, WIFI_NETWORK_COUNT);
@@ -135,6 +143,7 @@ void startRunning() {
     g_xplane.begin(g_xplaneIP, g_xplanePort);
     g_renderer.begin();
     g_selector.begin(&g_xplane);
+    g_beeper.begin();
 
     const GaugeConfig& cfg = g_selector.currentGauge()->getConfig();
     g_xplane.subscribe(cfg.dataref, XPLANE_FREQ, g_selector.currentIndex());
@@ -169,10 +178,23 @@ void handleRunning() {
 
     g_selector.update();
 
+    // Long-press button to toggle mute (only when not selecting a gauge)
+    if (!g_selector.isSelecting() && M5Dial.BtnA.pressedFor(MUTE_HOLD_MS)) {
+        if (!g_muteHoldTriggered) {
+            g_muteHoldTriggered = true;
+            g_beeper.toggleMute();
+            g_muteFlashEnd = millis() + 1000;
+        }
+    }
+    if (!M5Dial.BtnA.isPressed()) {
+        g_muteHoldTriggered = false;
+    }
+
     if (g_selector.selectionChanged()) {
         g_rawValue = 0.0f;
         g_smoothedValue = 0.0f;
         g_hasData = false;
+        g_beeper.stop();
         updateSecondarySubscription();
     }
 
@@ -200,13 +222,43 @@ void handleRunning() {
         g_rawValue = 0.0f;
         g_smoothedValue = 0.0f;
         g_hasData = false;
+        g_beeper.stop();
     }
 
     if (g_hasData) {
         g_smoothedValue += SMOOTH_ALPHA * (g_rawValue - g_smoothedValue);
     }
 
+    g_beeper.update(g_selector.currentGauge()->getConfig(), g_smoothedValue, g_hasData);
+
     g_renderer.render(g_selector.currentGauge(), g_rawValue, g_smoothedValue, xplaneConnected);
     g_selector.draw(g_renderer.getCanvas());
+
+    // Show mute indicator
+    if (g_beeper.isMuted()) {
+        M5Canvas& canvas = g_renderer.getCanvas();
+        unsigned long now = millis();
+        if (now < g_muteFlashEnd) {
+            // Brief large flash on toggle
+            canvas.setTextDatum(middle_center);
+            canvas.setTextSize(1.5);
+            canvas.setTextColor(COLOR_ARC_YELLOW);
+            canvas.drawString("MUTED", CENTER_X, CENTER_Y);
+        } else {
+            // Small persistent indicator
+            canvas.setTextDatum(top_center);
+            canvas.setTextSize(0.8);
+            canvas.setTextColor(COLOR_ARC_YELLOW);
+            canvas.drawString("MUTE", CENTER_X, 4);
+        }
+    } else if (millis() < g_muteFlashEnd) {
+        // Brief flash when unmuting
+        M5Canvas& canvas = g_renderer.getCanvas();
+        canvas.setTextDatum(middle_center);
+        canvas.setTextSize(1.5);
+        canvas.setTextColor(COLOR_ARC_GREEN);
+        canvas.drawString("UNMUTED", CENTER_X, CENTER_Y);
+    }
+
     g_renderer.push(M5Dial.Display);
 }
