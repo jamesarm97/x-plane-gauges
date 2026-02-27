@@ -45,6 +45,9 @@ static bool g_longPressTriggered = false;
 // ── Mute flash ──────────────────────────────────────────────────────
 static unsigned long g_muteFlashEnd = 0;
 
+// ── Connection tracking for backlight dimming ───────────────────────
+static bool g_xplaneConnected = false;
+
 // ── Forward declarations ────────────────────────────────────────────
 void handleWiFiConnecting();
 void handleDiscovering();
@@ -220,6 +223,16 @@ void handleTouchInput() {
     int touchCount = g_display.getTouch(&tp, 1);
     bool pressed = (touchCount > 0);
 
+    // Keep last valid touch position for use on release
+    static int lastTouchX = 0, lastTouchY = 0;
+    if (pressed) {
+        lastTouchX = tp.x;
+        lastTouchY = tp.y;
+    } else {
+        tp.x = lastTouchX;
+        tp.y = lastTouchY;
+    }
+
     if (pressed && !g_touchActive) {
         // Touch start
         g_touchActive = true;
@@ -256,12 +269,7 @@ void handleTouchInput() {
     if (!pressed && g_touchActive) {
         // Touch release — open picker on short tap when picker is closed
         if (!g_longPressTriggered && !g_picker.isOpen() && g_touchStartCell >= 0) {
-            // Simulate press+release to open picker for this cell
-            int ox, oy, w, h;
-            GaugeRenderer::cellOrigin(g_touchStartCell, ox, oy);
-            GaugeRenderer::cellSize(g_touchStartCell, w, h);
-            g_picker.handleTouch(ox + w / 2, oy + h / 2, true);
-            g_picker.handleTouch(ox + w / 2, oy + h / 2, false);
+            g_picker.open(g_touchStartCell);
         }
         g_touchActive = false;
     }
@@ -324,6 +332,16 @@ void handleRunning() {
             PositionGauge* pg = static_cast<PositionGauge*>(g_layout.gauge(i));
             pg->secondaryValue = cs.secondaryValue;
         }
+    }
+
+    // Track connection status and dim/brighten backlight
+    bool anyConnected = false;
+    for (int i = 0; i < CELL_COUNT; i++) {
+        if (g_layout.cell(i).hasData) { anyConnected = true; break; }
+    }
+    if (anyConnected != g_xplaneConnected) {
+        g_xplaneConnected = anyConnected;
+        display_set_backlight(anyConnected);
     }
 
     // Update buzzer

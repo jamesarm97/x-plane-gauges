@@ -70,7 +70,7 @@ void GaugeRenderer::renderCell(int cellIndex, GaugeBase* gauge, float rawValue,
 
     // Check for custom rendering
     if (cfg.customRenderer && gauge->customRender(&_cellSprite, smoothedValue, cx, cy)) {
-        drawConnectionStatus(xplaneConnected, cx, cy);
+        // Custom renderer handled it
     } else {
         // Standard gauge rendering
         float displayValue = smoothedValue;
@@ -87,7 +87,6 @@ void GaugeRenderer::renderCell(int cellIndex, GaugeBase* gauge, float rawValue,
         drawValue(cfg, rawValue, cx, cy);
         drawNeedle(angle, cx, cy);
         drawHub(cx, cy);
-        drawConnectionStatus(xplaneConnected, cx, cy);
     }
 
     // Composite cell sprite onto framebuffer
@@ -235,17 +234,17 @@ void GaugeRenderer::drawHub(int cx, int cy) {
 void GaugeRenderer::drawTitle(const GaugeConfig& cfg, int cx, int cy) {
     _cellSprite.setTextDatum(middle_center);
     _cellSprite.setTextColor(COLOR_TITLE);
-    _cellSprite.setTextSize(1.0);
-    _cellSprite.drawString(cfg.title, cx, cy - 45);
+    _cellSprite.setTextSize(1.3);
+    _cellSprite.drawString(cfg.title, cx, cy - 50);
 
-    _cellSprite.setTextSize(0.8);
-    _cellSprite.drawString(cfg.units, cx, cy - 30);
+    _cellSprite.setTextSize(1.0);
+    _cellSprite.drawString(cfg.units, cx, cy - 35);
 }
 
 void GaugeRenderer::drawValue(const GaugeConfig& cfg, float value, int cx, int cy) {
     _cellSprite.setTextDatum(middle_center);
     _cellSprite.setTextColor(COLOR_VALUE);
-    _cellSprite.setTextSize(1.1);
+    _cellSprite.setTextSize(1.4);
 
     float displayVal = value * cfg.valueMultiplier;
 
@@ -258,13 +257,6 @@ void GaugeRenderer::drawValue(const GaugeConfig& cfg, float value, int cx, int c
         snprintf(buf, sizeof(buf), "%.1f", displayVal);
     }
     _cellSprite.drawString(buf, cx, cy + 35);
-}
-
-void GaugeRenderer::drawConnectionStatus(bool connected, int cx, int cy) {
-    uint16_t color = connected ? COLOR_ARC_GREEN : COLOR_ARC_RED;
-    int dotX = cx + 25;
-    int dotY = cy + 50;
-    _cellSprite.fillCircle(dotX, dotY, 4, color);
 }
 
 float GaugeRenderer::valueToAngle(const GaugeConfig& cfg, float value) {

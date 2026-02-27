@@ -124,11 +124,14 @@ public:
 // ── Global display instance ─────────────────────────────────────────
 static LGFX g_display;
 
-// ── CH422G helpers ──────────────────────────────────────────────────
+// ── CH422G state tracking ───────────────────────────────────────────
+static uint8_t g_ch422g_state = 0;
+
 static void ch422g_write(uint8_t value) {
     Wire.beginTransmission(CH422G_WRITE_CMD >> 1);  // 0x70 >> 1 = 0x38
     Wire.write(value);
     Wire.endTransmission();
+    g_ch422g_state = value;
 }
 
 static void ch422g_set_io_mode() {
@@ -181,4 +184,20 @@ static void display_init() {
     // Initialize LovyanGFX (sets up RGB bus + touch I2C)
     g_display.init();
     g_display.setRotation(0);
+}
+
+// ── Backlight control (safe to call after display_init) ─────────────
+// Temporarily acquires Wire to send CH422G command, then releases it.
+static void display_set_backlight(bool on) {
+    uint8_t newState;
+    if (on) {
+        newState = g_ch422g_state | CH422G_EXIO2;
+    } else {
+        newState = g_ch422g_state & ~CH422G_EXIO2;
+    }
+    if (newState == g_ch422g_state) return;
+
+    Wire.begin(GPIO_NUM_8, GPIO_NUM_9, 400000);
+    ch422g_write(newState);
+    Wire.end();
 }

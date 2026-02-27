@@ -21,22 +21,28 @@ public:
 
     bool isOpen() const { return _open; }
     int selectedCell() const { return _selectedCell; }
+    void open(int cellIndex);
 
 private:
     DashboardLayout* _layout = nullptr;
     bool _open = false;
     int _selectedCell = -1;         // Which cell is being configured
-    int _scrollOffset = 0;          // Scroll position in picker list
+    int _scrollOffset = 0;          // Scroll position in pixels
+    int _maxScroll = 0;             // Computed max scroll
     unsigned long _openTime = 0;    // For auto-close timeout
     bool _wasTouched = false;       // For edge detection
+    int _lastTouchY = 0;           // For scroll drag tracking
+    bool _isDragging = false;       // True if actively dragging to scroll
+    int _touchStartY = 0;          // Y at touch start for drag detection
 
     // Picker panel geometry
     static constexpr int PANEL_X = SCREEN_WIDTH - PICKER_WIDTH;
     static constexpr int PANEL_Y = 0;
     static constexpr int PANEL_W = PICKER_WIDTH;
     static constexpr int PANEL_H = SCREEN_HEIGHT;
-    static constexpr int HEADER_H = 40;
-    static constexpr int MAX_VISIBLE_ROWS = (PANEL_H - HEADER_H) / PICKER_ROW_HEIGHT;
+    static constexpr int HEADER_H = 44;
+    static constexpr int CAT_HEADER_H = 24;
+    static constexpr int DRAG_THRESHOLD = 8;    // Pixels before drag starts
 
     // Category info for grouped display
     struct Category {
@@ -54,8 +60,8 @@ private:
     };
     static constexpr int CATEGORY_COUNT = 5;
 
-    void open(int cellIndex);
     void close();
     int hitTestCell(int x, int y);
     int hitTestPickerRow(int x, int y);
+    int computeContentHeight() const;
 };

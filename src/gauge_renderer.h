@@ -47,7 +47,5 @@ private:
     void drawHub(int cx, int cy);
     void drawTitle(const GaugeConfig& cfg, int cx, int cy);
     void drawValue(const GaugeConfig& cfg, float value, int cx, int cy);
-    void drawConnectionStatus(bool connected, int cx, int cy);
-
     float valueToAngle(const GaugeConfig& cfg, float value);
 };
