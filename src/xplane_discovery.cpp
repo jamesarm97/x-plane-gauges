@@ -68,19 +68,20 @@ void XPlaneDiscovery::drawStatus(LGFX_Sprite& fb) {
     fb.setTextDatum(middle_center);
 
     fb.setTextColor(COLOR_TITLE);
-    fb.setTextSize(2.0);
-    fb.drawString("Searching for X-Plane...", cx, cy - 30);
+    fb.setTextSize(3.0);
+    fb.drawString("Searching for X-Plane", cx, cy - 40);
 
     fb.setTextColor(COLOR_DIAL_RIM);
-    fb.setTextSize(1.2);
+    fb.setTextSize(2.0);
     fb.drawString("Listening on port 49707", cx, cy + 20);
 
-    // Animated dots
+    // Animated dots — use left-aligned datum so they grow rightward
     static int dots = 0;
     dots = (dots + 1) % 4;
-    char buf[8] = "   ";
-    for (int i = 0; i < dots; i++) buf[i] = '.';
+    const char* dotStr[] = { "", ".", "..", "..." };
+    fb.setTextDatum(middle_left);
     fb.setTextColor(COLOR_VALUE);
-    fb.setTextSize(2.5);
-    fb.drawString(buf, cx, cy + 60);
+    fb.setTextSize(3.0);
+    fb.drawString(dotStr[dots], cx - 24, cy + 70);
+    fb.setTextDatum(middle_center);
 }

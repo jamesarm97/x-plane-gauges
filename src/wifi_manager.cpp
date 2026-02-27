@@ -32,17 +32,17 @@ void WiFiManager::drawStatus(LGFX_Sprite& fb) {
 
     if (isConnected()) {
         fb.setTextColor(COLOR_ARC_GREEN);
-        fb.setTextSize(2.0);
-        fb.drawString("WiFi Connected", cx, cy - 30);
+        fb.setTextSize(3.0);
+        fb.drawString("WiFi Connected", cx, cy - 40);
         fb.setTextColor(COLOR_LABEL);
-        fb.setTextSize(1.5);
-        fb.drawString(WiFi.localIP().toString().c_str(), cx, cy + 20);
+        fb.setTextSize(2.5);
+        fb.drawString(WiFi.localIP().toString().c_str(), cx, cy + 25);
     } else {
         fb.setTextColor(COLOR_ARC_YELLOW);
-        fb.setTextSize(2.0);
-        fb.drawString("Scanning WiFi...", cx, cy - 20);
+        fb.setTextSize(3.0);
+        fb.drawString("Scanning WiFi...", cx, cy - 30);
         fb.setTextColor(COLOR_LABEL);
-        fb.setTextSize(1.5);
-        fb.drawString(WiFi.SSID().c_str(), cx, cy + 30);
+        fb.setTextSize(2.5);
+        fb.drawString(WiFi.SSID().c_str(), cx, cy + 35);
     }
 }

@@ -76,16 +76,16 @@ void setup() {
     int cy = SCREEN_HEIGHT / 2;
 
     splash.setTextColor(COLOR_TITLE);
-    splash.setTextSize(2.5);
-    splash.drawString("X-Plane Dashboard", cx, cy - 30);
+    splash.setTextSize(4.0);
+    splash.drawString("X-Plane Dashboard", cx, cy - 40);
 
     splash.setTextColor(COLOR_DIAL_RIM);
-    splash.setTextSize(1.5);
-    splash.drawString("v" FW_VERSION, cx, cy + 15);
+    splash.setTextSize(2.5);
+    splash.drawString("v" FW_VERSION, cx, cy + 20);
 
     splash.setTextColor(COLOR_LABEL);
-    splash.setTextSize(1.2);
-    splash.drawString("Initializing...", cx, cy + 50);
+    splash.setTextSize(2.0);
+    splash.drawString("Initializing...", cx, cy + 65);
 
     splash.pushSprite(&g_display, 0, 0);
     splash.deleteSprite();
@@ -148,14 +148,14 @@ void handleDiscovering() {
         fb.fillSprite(COLOR_BG);
         fb.setTextDatum(middle_center);
         fb.setTextColor(COLOR_ARC_GREEN);
-        fb.setTextSize(2.5);
-        fb.drawString("X-Plane Found!", cx, cy - 40);
+        fb.setTextSize(4.0);
+        fb.drawString("X-Plane Found!", cx, cy - 50);
         fb.setTextColor(COLOR_VALUE);
-        fb.setTextSize(1.8);
-        fb.drawString(g_xplaneIP, cx, cy + 10);
+        fb.setTextSize(3.0);
+        fb.drawString(g_xplaneIP, cx, cy + 15);
         fb.setTextColor(COLOR_DIAL_RIM);
-        fb.setTextSize(1.2);
-        fb.drawString(g_discovery.computerName(), cx, cy + 50);
+        fb.setTextSize(2.0);
+        fb.drawString(g_discovery.computerName(), cx, cy + 65);
         fb.pushSprite(&g_display, 0, 0);
         delay(1500);
 

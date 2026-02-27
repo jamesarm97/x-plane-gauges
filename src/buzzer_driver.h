@@ -7,10 +7,9 @@
 class BuzzerDriver {
 public:
     void begin() {
-        // Configure LEDC for PWM tone generation
-        ledcSetup(BUZZER_LEDC_CHANNEL, WARNING_BEEP_FREQ, 8);  // 8-bit resolution
-        ledcAttachPin(BUZZER_GPIO, BUZZER_LEDC_CHANNEL);
-        ledcWrite(BUZZER_LEDC_CHANNEL, 0);  // Start silent
+        // Arduino ESP32 3.x LEDC API: ledcAttach(pin, freq, resolution)
+        ledcAttach(BUZZER_GPIO, WARNING_BEEP_FREQ, 8);  // 8-bit resolution
+        ledcWrite(BUZZER_GPIO, 0);  // Start silent
 
         _inRedZone = false;
         _beepOn = false;
@@ -72,11 +71,11 @@ private:
     unsigned long _lastToggleMs = 0;
 
     void toneOn() {
-        ledcWriteTone(BUZZER_LEDC_CHANNEL, WARNING_BEEP_FREQ);
-        ledcWrite(BUZZER_LEDC_CHANNEL, 128);  // 50% duty cycle
+        ledcWriteTone(BUZZER_GPIO, WARNING_BEEP_FREQ);
+        ledcWrite(BUZZER_GPIO, 128);  // 50% duty cycle
     }
 
     void toneOff() {
-        ledcWrite(BUZZER_LEDC_CHANNEL, 0);
+        ledcWrite(BUZZER_GPIO, 0);
     }
 };
