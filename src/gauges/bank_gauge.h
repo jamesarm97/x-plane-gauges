@@ -32,7 +32,9 @@ public:
         return cfg;
     }
 
-    bool customRender(void* spritePtr, float roll, int cx, int cy) override {
+    bool customRender(void* spritePtr, const float* values, int valueCount, int cx, int cy) override {
+        float roll = values[0];
+        (void)valueCount;
         LGFX_Sprite* canvas = static_cast<LGFX_Sprite*>(spritePtr);
 
         // Clamp roll for display

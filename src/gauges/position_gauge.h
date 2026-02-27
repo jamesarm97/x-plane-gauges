@@ -8,9 +8,6 @@
 
 class PositionGauge : public GaugeBase {
 public:
-    // Secondary value (longitude) stored per-cell by dashboard
-    float secondaryValue = 0.0f;
-
     const GaugeConfig& getConfig() const override {
         static const GaugeConfig cfg = {
             .title        = "POSITION",
@@ -27,17 +24,16 @@ public:
             .wrapNeedle   = false,
             .wrapModulo   = 0,
             .customRenderer = true,
+            .extraDatarefs = { "sim/flightmodel/position/longitude" },
+            .extraDatarefCount = 1,
         };
         return cfg;
     }
 
-    // Secondary dataref for longitude
-    static const char* secondaryDataref() { return "sim/flightmodel/position/longitude"; }
-    static constexpr int SECONDARY_INDEX_BASE = 100;  // + cellIndex for per-cell secondary
-
-    bool customRender(void* spritePtr, float lat, int cx, int cy) override {
+    bool customRender(void* spritePtr, const float* values, int valueCount, int cx, int cy) override {
         LGFX_Sprite* canvas = static_cast<LGFX_Sprite*>(spritePtr);
-        float lon = secondaryValue;
+        float lat = values[0];
+        float lon = (valueCount > 1) ? values[1] : 0.0f;
 
         canvas->fillSprite(COLOR_BG);
         canvas->fillCircle(cx, cy, DIAL_RADIUS, COLOR_DIAL_BG);

@@ -9,8 +9,8 @@ public:
     void begin(LGFX* display);
 
     // Render a single gauge into its cell position on the framebuffer
-    void renderCell(int cellIndex, GaugeBase* gauge, float rawValue,
-                    float smoothedValue, bool xplaneConnected);
+    void renderCell(int cellIndex, GaugeBase* gauge, const float* values,
+                    const float* smoothedValues, int valueCount, bool xplaneConnected);
 
     // Draw the grid borders onto the framebuffer
     void drawGrid();

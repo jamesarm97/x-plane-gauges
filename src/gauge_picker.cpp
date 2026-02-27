@@ -47,6 +47,23 @@ bool GaugePicker::handleTouch(int x, int y, bool pressed) {
         _touchStartY = y;
         _lastTouchY = y;
         _isDragging = false;
+
+        // Immediate selection on press (like view picker)
+        if (x >= PANEL_X && x < PANEL_X + PANEL_W &&
+            y >= PANEL_Y && y < PANEL_Y + PANEL_H) {
+            if (y >= PANEL_Y + HEADER_H) {
+                int row = hitTestPickerRow(x, y);
+                if (row >= 0 && row < GAUGE_COUNT) {
+                    _layout->setGauge(_selectedCell, row);
+                    close();
+                    return true;    // Gauge changed
+                }
+            }
+        } else {
+            // Tap outside popup — close
+            close();
+            return false;
+        }
     }
 
     if (pressed && _wasTouched) {
@@ -64,20 +81,6 @@ bool GaugePicker::handleTouch(int x, int y, bool pressed) {
     }
 
     if (justReleased) {
-        if (!_isDragging) {
-            // This was a tap, not a drag
-            if (x >= PANEL_X) {
-                int row = hitTestPickerRow(x, y);
-                if (row >= 0 && row < GAUGE_COUNT) {
-                    _layout->setGauge(_selectedCell, row);
-                    close();
-                    return true;    // Gauge changed
-                }
-            } else {
-                // Touched outside picker — cancel
-                close();
-            }
-        }
         _isDragging = false;
     }
 
@@ -87,61 +90,68 @@ bool GaugePicker::handleTouch(int x, int y, bool pressed) {
 void GaugePicker::draw(LGFX_Sprite& fb) {
     if (!_open) return;
 
-    // Panel background
-    fb.fillRect(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, COLOR_PICKER_BG);
+    // Darken background around popup
+    fb.fillRect(PANEL_X - 4, PANEL_Y - 4, PANEL_W + 8, PANEL_H + 8, COLOR_BG);
+
+    // Popup background with rounded corners and border
+    fb.fillRoundRect(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 8, COLOR_PICKER_BG);
+    fb.drawRoundRect(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 8, COLOR_PICKER_HL);
 
     // Header (fixed, not scrolled)
-    fb.fillRect(PANEL_X, 0, PANEL_W, HEADER_H, COLOR_GRID_LINE);
     fb.setTextDatum(middle_center);
     fb.setTextColor(COLOR_PICKER_HL);
-    fb.setTextSize(1.8);
+    fb.setTextSize(2.2);
     char header[32];
-    snprintf(header, sizeof(header), "Cell %d", _selectedCell + 1);
-    fb.drawString(header, PANEL_X + PANEL_W / 2, HEADER_H / 2);
+    snprintf(header, sizeof(header), "CELL %d", _selectedCell + 1);
+    fb.drawString(header, PANEL_X + PANEL_W / 2, PANEL_Y + HEADER_H / 2);
 
     // Separator
-    fb.drawFastHLine(PANEL_X, HEADER_H, PANEL_W, COLOR_PICKER_HL);
+    fb.drawFastHLine(PANEL_X + 4, PANEL_Y + HEADER_H, PANEL_W - 8, COLOR_PICKER_HL);
 
     // Clip region for scrollable content
-    fb.setClipRect(PANEL_X, HEADER_H + 1, PANEL_W, PANEL_H - HEADER_H - 1);
+    int contentY = PANEL_Y + HEADER_H + 1;
+    int contentH = PANEL_H - HEADER_H - 1;
+    fb.setClipRect(PANEL_X, contentY, PANEL_W, contentH);
 
     // Gauge list with categories (scrollable)
-    int yPos = HEADER_H + 4 - _scrollOffset;
+    int yPos = contentY + 4 - _scrollOffset;
     int currentGauge = _layout->gaugeIndex(_selectedCell);
 
     for (int cat = 0; cat < CATEGORY_COUNT; cat++) {
         // Category header
-        if (yPos + CAT_HEADER_H > HEADER_H && yPos < PANEL_H) {
-            fb.setTextDatum(top_left);
+        if (yPos + CAT_HEADER_H > contentY && yPos < PANEL_Y + PANEL_H) {
+            fb.setTextDatum(middle_left);
             fb.setTextColor(COLOR_PICKER_HL);
-            fb.setTextSize(1.2);
-            fb.drawString(CATEGORIES[cat].name, PANEL_X + 8, yPos + 4);
+            fb.setTextSize(1.5);
+            fb.drawString(CATEGORIES[cat].name, PANEL_X + 12, yPos + CAT_HEADER_H / 2);
         }
         yPos += CAT_HEADER_H;
 
         // Gauge entries in this category
         for (int i = 0; i < CATEGORIES[cat].count; i++) {
-            if (yPos > PANEL_H) break;  // Below visible area
+            if (yPos > PANEL_Y + PANEL_H) break;  // Below visible area
 
-            if (yPos + PICKER_ROW_HEIGHT > HEADER_H) {
+            if (yPos + PICKER_ROW_HEIGHT > contentY) {
                 int gaugeIdx = CATEGORIES[cat].startIdx + i;
                 const GaugeConfig& cfg = g_gauges[gaugeIdx]->getConfig();
                 bool isSelected = (gaugeIdx == currentGauge);
 
                 if (isSelected) {
-                    fb.fillRect(PANEL_X + 2, yPos, PANEL_W - 4, PICKER_ROW_HEIGHT - 2, 0x0014);
+                    fb.fillRect(PANEL_X + 4, yPos + 2, PANEL_W - 8, PICKER_ROW_HEIGHT - 4, 0x0014);
                 }
 
                 fb.setTextDatum(middle_left);
                 fb.setTextColor(isSelected ? COLOR_PICKER_HL : COLOR_PICKER_FG);
-                fb.setTextSize(1.3);
-                fb.drawString(cfg.title, PANEL_X + 12, yPos + PICKER_ROW_HEIGHT / 2);
+                fb.setTextSize(1.8);
+                fb.drawString(cfg.title, PANEL_X + 20, yPos + PICKER_ROW_HEIGHT / 2);
 
                 // Units on the right
-                fb.setTextDatum(middle_right);
-                fb.setTextColor(COLOR_DIAL_RIM);
-                fb.setTextSize(1.0);
-                fb.drawString(cfg.units, PANEL_X + PANEL_W - 8, yPos + PICKER_ROW_HEIGHT / 2);
+                if (cfg.units[0] != '\0') {
+                    fb.setTextDatum(middle_right);
+                    fb.setTextColor(COLOR_DIAL_RIM);
+                    fb.setTextSize(1.2);
+                    fb.drawString(cfg.units, PANEL_X + PANEL_W - 16, yPos + PICKER_ROW_HEIGHT / 2);
+                }
             }
 
             yPos += PICKER_ROW_HEIGHT;
@@ -150,13 +160,13 @@ void GaugePicker::draw(LGFX_Sprite& fb) {
 
     fb.clearClipRect();
 
-    // Scroll indicator (thin bar on right edge)
+    // Scroll indicator (bar on right edge)
     if (_maxScroll > 0) {
-        int contentH = computeContentHeight();
         int viewH = PANEL_H - HEADER_H;
-        int barH = max(20, viewH * viewH / contentH);
-        int barY = HEADER_H + (_scrollOffset * (viewH - barH)) / _maxScroll;
-        fb.fillRect(PANEL_X + PANEL_W - 4, barY, 3, barH, COLOR_DIAL_RIM);
+        int totalContentH = computeContentHeight();
+        int barH = max(30, viewH * viewH / totalContentH);
+        int barY = PANEL_Y + HEADER_H + (_scrollOffset * (viewH - barH)) / _maxScroll;
+        fb.fillRoundRect(PANEL_X + PANEL_W - 8, barY, 5, barH, 2, COLOR_DIAL_RIM);
     }
 }
 
@@ -165,6 +175,7 @@ void GaugePicker::open(int cellIndex) {
     _selectedCell = cellIndex;
     _scrollOffset = 0;
     _isDragging = false;
+    _wasTouched = false;
     _openTime = millis();
 
     // Compute max scroll
@@ -176,6 +187,7 @@ void GaugePicker::open(int cellIndex) {
 void GaugePicker::close() {
     _open = false;
     _selectedCell = -1;
+    _wasTouched = false;
 }
 
 int GaugePicker::hitTestCell(int x, int y) {
@@ -186,10 +198,13 @@ int GaugePicker::hitTestCell(int x, int y) {
 }
 
 int GaugePicker::hitTestPickerRow(int x, int y) {
-    if (x < PANEL_X || y < HEADER_H) return -1;
+    if (x < PANEL_X || x >= PANEL_X + PANEL_W) return -1;
+
+    int contentY = PANEL_Y + HEADER_H;
+    if (y < contentY) return -1;
 
     // Walk through categories + rows with scroll offset applied
-    int yPos = HEADER_H + 4 - _scrollOffset;
+    int yPos = contentY + 4 - _scrollOffset;
     for (int cat = 0; cat < CATEGORY_COUNT; cat++) {
         yPos += CAT_HEADER_H;  // Category header
 

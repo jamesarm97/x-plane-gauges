@@ -49,8 +49,8 @@ void GaugeRenderer::cellSize(int cellIndex, int& w, int& h) {
     h = CELL_HEIGHT;
 }
 
-void GaugeRenderer::renderCell(int cellIndex, GaugeBase* gauge, float rawValue,
-                                float smoothedValue, bool xplaneConnected) {
+void GaugeRenderer::renderCell(int cellIndex, GaugeBase* gauge, const float* values,
+                                const float* smoothedValues, int valueCount, bool xplaneConnected) {
     if (!_initialized || !gauge) return;
 
     const GaugeConfig& cfg = gauge->getConfig();
@@ -69,13 +69,15 @@ void GaugeRenderer::renderCell(int cellIndex, GaugeBase* gauge, float rawValue,
     }
 
     // Check for custom rendering
-    if (cfg.customRenderer && gauge->customRender(&_cellSprite, smoothedValue, cx, cy)) {
+    if (cfg.customRenderer && gauge->customRender(&_cellSprite, smoothedValues, valueCount, cx, cy)) {
         // Custom renderer handled it
     } else {
-        // Standard gauge rendering
-        float displayValue = smoothedValue;
+        // Standard gauge rendering — uses slot 0 (primary dataref)
+        float smoothed0 = smoothedValues[0];
+        float raw0 = values[0];
+        float displayValue = smoothed0;
         if (cfg.wrapNeedle && cfg.wrapModulo > 0) {
-            displayValue = fmodf(smoothedValue, cfg.wrapModulo);
+            displayValue = fmodf(smoothed0, cfg.wrapModulo);
             if (displayValue < 0) displayValue += cfg.wrapModulo;
         }
         float angle = valueToAngle(cfg, displayValue);
@@ -84,7 +86,7 @@ void GaugeRenderer::renderCell(int cellIndex, GaugeBase* gauge, float rawValue,
         drawArcs(cfg, cx, cy);
         drawTicks(cfg, cx, cy);
         drawTitle(cfg, cx, cy);
-        drawValue(cfg, rawValue, cx, cy);
+        drawValue(cfg, raw0, cx, cy);
         drawNeedle(angle, cx, cy);
         drawHub(cx, cy);
     }

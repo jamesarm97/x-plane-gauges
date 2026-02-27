@@ -1,7 +1,7 @@
 #pragma once
 
 // ── Version ────────────────────────────────────────────────────────
-#define FW_VERSION "2.0.0"
+#define FW_VERSION "2.0.1"
 
 // ── X-Plane Configuration ───────────────────────────────────────────
 #define XPLANE_PORT   49000             // X-Plane UDP port (default, overridden by beacon)
@@ -37,9 +37,10 @@
 #define SMOOTH_ALPHA    0.15f   // Exponential smoothing factor for needle
 
 // ── Gauge Picker ────────────────────────────────────────────────────
-#define PICKER_WIDTH        300     // Side panel width in pixels
+#define PICKER_WIDTH        420     // Popup width in pixels
+#define PICKER_HEIGHT       440     // Popup height in pixels
 #define PICKER_TIMEOUT_MS   5000    // Auto-close after 5 seconds
-#define PICKER_ROW_HEIGHT   36      // Height of each gauge entry
+#define PICKER_ROW_HEIGHT   50      // Height of each gauge entry
 
 // ── Buzzer (LEDC PWM) ──────────────────────────────────────────────
 #define BUZZER_GPIO           2     // GPIO pin for external passive buzzer

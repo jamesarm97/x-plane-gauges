@@ -6,15 +6,15 @@
 #include "gauges/gauge_registry.h"
 
 // ── Per-cell state ──────────────────────────────────────────────────
+static constexpr int MAX_VALUES = 8;
+
 struct CellState {
     int gaugeIndex = 0;         // Index into g_gauges[]
-    float rawValue = 0.0f;
-    float smoothedValue = 0.0f;
+    float values[MAX_VALUES] = {};          // Raw values (slot 0 = primary, 1-7 = extra)
+    float smoothedValues[MAX_VALUES] = {};  // Smoothed values for rendering
+    int valueCount = 1;                     // Number of active dataref slots
     bool hasData = false;
     unsigned long lastReceiveTime = 0;
-
-    // For position gauge secondary dataref (longitude)
-    float secondaryValue = 0.0f;
 };
 
 // ── Dashboard: manages 6 gauge cells ─────────────────────────────────
@@ -36,10 +36,12 @@ public:
     void setGauge(int cellIndex, int gaugeIdx) {
         if (gaugeIdx < 0 || gaugeIdx >= GAUGE_COUNT) return;
         _cells[cellIndex].gaugeIndex = gaugeIdx;
-        _cells[cellIndex].rawValue = 0.0f;
-        _cells[cellIndex].smoothedValue = 0.0f;
+        for (int s = 0; s < MAX_VALUES; s++) {
+            _cells[cellIndex].values[s] = 0.0f;
+            _cells[cellIndex].smoothedValues[s] = 0.0f;
+        }
+        _cells[cellIndex].valueCount = 1 + g_gauges[gaugeIdx]->getConfig().extraDatarefCount;
         _cells[cellIndex].hasData = false;
-        _cells[cellIndex].secondaryValue = 0.0f;
         saveToNVS();
     }
 
@@ -49,7 +51,7 @@ public:
             if (!_cells[i].hasData) continue;
             const GaugeConfig& cfg = g_gauges[_cells[i].gaugeIndex]->getConfig();
             if (cfg.customRenderer) continue;
-            float val = _cells[i].smoothedValue;
+            float val = _cells[i].smoothedValues[0];
             for (size_t a = 0; a < cfg.arcCount; a++) {
                 if (cfg.arcs[a].color == COLOR_ARC_RED &&
                     val >= cfg.arcs[a].startValue &&
@@ -59,13 +61,6 @@ public:
             }
         }
         return false;
-    }
-
-    // Check if a specific gauge type needs a secondary dataref (position gauge)
-    bool needsSecondary(int cellIndex) const {
-        const GaugeConfig& cfg = g_gauges[_cells[cellIndex].gaugeIndex]->getConfig();
-        // Position gauge has latitude as primary, needs longitude as secondary
-        return (strcmp(cfg.title, "POSITION") == 0);
     }
 
 private:
@@ -96,6 +91,7 @@ private:
             int idx = _prefs.getInt(key, defaultGauge(i));
             if (idx < 0 || idx >= GAUGE_COUNT) idx = defaultGauge(i);
             _cells[i].gaugeIndex = idx;
+            _cells[i].valueCount = 1 + g_gauges[idx]->getConfig().extraDatarefCount;
         }
         _prefs.end();
     }

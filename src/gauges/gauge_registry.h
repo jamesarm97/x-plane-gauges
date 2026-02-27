@@ -22,6 +22,14 @@
 #include "lat_gauge.h"
 #include "lon_gauge.h"
 #include "position_gauge.h"
+#include "attitude_gauge.h"
+#include "hsi_gauge.h"
+#include "annunciator_gauge.h"
+#include "engine_cluster_gauge.h"
+#include "wind_gauge.h"
+#include "gmeter_gauge.h"
+#include "fuel_endurance_gauge.h"
+#include "trim_gauge.h"
 
 // ── Static gauge instances ──────────────────────────────────────────
 // Flight instruments
@@ -55,9 +63,19 @@ static PositionGauge  g_positionGauge;
 static LatGauge       g_latGauge;
 static LonGauge       g_lonGauge;
 
+// Advanced instruments (indices 21-28)
+static AttitudeGauge        g_attitudeGauge;
+static HSIGauge             g_hsiGauge;
+static AnnunciatorGauge     g_annunciatorGauge;
+static EngineClusterGauge   g_engineClusterGauge;
+static WindGauge            g_windGauge;
+static GMeterGauge          g_gmeterGauge;
+static FuelEnduranceGauge   g_fuelEnduranceGauge;
+static TrimGauge            g_trimGauge;
+
 // ── Gauge registry array ────────────────────────────────────────────
 static GaugeBase* g_gauges[] = {
-    // Flight instruments
+    // Flight instruments (0-6)
     &g_airspeedGauge,
     &g_altitudeGauge,
     &g_vsiGauge,
@@ -65,24 +83,33 @@ static GaugeBase* g_gauges[] = {
     &g_bankGauge,
     &g_pitchGauge,
     &g_gforceGauge,
-    // Controls
+    // Controls (7-8)
     &g_throttleGauge,
     &g_flapGauge,
-    // Engine
+    // Engine (9-14)
     &g_rpmGauge,
     &g_manifoldGauge,
     &g_egtGauge,
     &g_chtGauge,
     &g_oilTempGauge,
     &g_oilPressGauge,
-    // Fuel & electrical
+    // Fuel & electrical (15-17)
     &g_fuelGauge,
     &g_fuelFlowGauge,
     &g_voltsGauge,
-    // Navigation
+    // Navigation (18-20)
     &g_positionGauge,
     &g_latGauge,
     &g_lonGauge,
+    // Advanced instruments (21-28)
+    &g_attitudeGauge,
+    &g_hsiGauge,
+    &g_annunciatorGauge,
+    &g_engineClusterGauge,
+    &g_windGauge,
+    &g_gmeterGauge,
+    &g_fuelEnduranceGauge,
+    &g_trimGauge,
 };
 
 static constexpr int GAUGE_COUNT = sizeof(g_gauges) / sizeof(g_gauges[0]);

@@ -18,11 +18,14 @@ struct TickConfig {
     bool  showLabels;       // Whether to draw numeric labels at major ticks
 };
 
+// ── Multi-dataref support ───────────────────────────────────────────
+static constexpr int MAX_EXTRA_DATAREFS = 7;
+
 // ── Complete gauge configuration ────────────────────────────────────
 struct GaugeConfig {
     const char* title;          // Gauge name (e.g., "AIRSPEED")
     const char* units;          // Units label (e.g., "KTS")
-    const char* dataref;        // X-Plane dataref path
+    const char* dataref;        // X-Plane dataref path (primary/slot 0)
 
     float minValue;             // Scale minimum
     float maxValue;             // Scale maximum
@@ -39,6 +42,9 @@ struct GaugeConfig {
     bool wrapNeedle;            // For altitude: needle wraps every (maxValue) feet
     float wrapModulo;           // Modulo value for wrapping (e.g., 1000 for altitude)
     bool customRenderer;        // If true, gauge provides its own render method
+
+    const char* extraDatarefs[MAX_EXTRA_DATAREFS] = {};  // Additional datarefs (slots 1-7)
+    int extraDatarefCount = 0;                            // Number of extra datarefs used
 };
 
 // ── Abstract base for gauges ────────────────────────────────────────
@@ -48,7 +54,8 @@ public:
     virtual const GaugeConfig& getConfig() const = 0;
 
     // Override for custom rendering (heading gauge compass card, etc.)
+    // values = array of smoothed dataref values, valueCount = number of values
     // cx, cy = center coordinates of the cell being rendered into.
     // Returns true if custom rendering was handled, false to use default.
-    virtual bool customRender(void* /*sprite*/, float /*value*/, int /*cx*/, int /*cy*/) { return false; }
+    virtual bool customRender(void* /*sprite*/, const float* /*values*/, int /*valueCount*/, int /*cx*/, int /*cy*/) { return false; }
 };

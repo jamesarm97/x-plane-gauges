@@ -35,13 +35,13 @@ private:
     bool _isDragging = false;       // True if actively dragging to scroll
     int _touchStartY = 0;          // Y at touch start for drag detection
 
-    // Picker panel geometry
-    static constexpr int PANEL_X = SCREEN_WIDTH - PICKER_WIDTH;
-    static constexpr int PANEL_Y = 0;
+    // Picker popup geometry (centered on screen)
     static constexpr int PANEL_W = PICKER_WIDTH;
-    static constexpr int PANEL_H = SCREEN_HEIGHT;
-    static constexpr int HEADER_H = 44;
-    static constexpr int CAT_HEADER_H = 24;
+    static constexpr int PANEL_H = PICKER_HEIGHT;
+    static constexpr int PANEL_X = (SCREEN_WIDTH - PANEL_W) / 2;
+    static constexpr int PANEL_Y = (SCREEN_HEIGHT - PANEL_H) / 2;
+    static constexpr int HEADER_H = 60;
+    static constexpr int CAT_HEADER_H = 32;
     static constexpr int DRAG_THRESHOLD = 8;    // Pixels before drag starts
 
     // Category info for grouped display
@@ -57,8 +57,9 @@ private:
         {"ENGINE",     9,  6},
         {"FUEL/ELEC", 15,  3},
         {"NAV",       18,  3},
+        {"ADVANCED",  21,  8},
     };
-    static constexpr int CATEGORY_COUNT = 5;
+    static constexpr int CATEGORY_COUNT = 6;
 
     void close();
     int hitTestCell(int x, int y);

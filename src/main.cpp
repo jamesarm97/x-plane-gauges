@@ -9,8 +9,8 @@
 #include "dashboard_layout.h"
 #include "gauge_picker.h"
 #include "buzzer_driver.h"
+#include "view_manager.h"
 #include "gauges/gauge_registry.h"
-#include "gauges/position_gauge.h"
 
 // ── Application State ───────────────────────────────────────────────
 enum AppState {
@@ -27,6 +27,7 @@ static GaugeRenderer     g_renderer;
 static DashboardLayout   g_layout;
 static GaugePicker       g_picker;
 static BuzzerDriver      g_buzzer;
+static ViewManager       g_viewManager;
 
 // ── Discovered X-Plane address ──────────────────────────────────────
 static char g_xplaneIP[20] = {0};
@@ -48,6 +49,22 @@ static unsigned long g_muteFlashEnd = 0;
 // ── Connection tracking for backlight dimming ───────────────────────
 static bool g_xplaneConnected = false;
 
+// ── Two-finger gesture tracking ─────────────────────────────────────
+static bool g_twoFingerActive = false;
+static int g_twoFingerStartX0 = 0, g_twoFingerStartX1 = 0;
+static unsigned long g_twoFingerStartMs = 0;
+static bool g_twoFingerSwipeTriggered = false;
+static bool g_suppressNextTap = false;       // Suppress single-tap after two-finger gesture
+static unsigned long g_viewChangeDebounce = 0;
+static constexpr int SWIPE_THRESHOLD = 50;         // Pixels for swipe detection
+static constexpr unsigned long VIEW_DEBOUNCE_MS = 500;
+static constexpr unsigned long TWO_FINGER_TAP_MS = 800;  // Max duration for tap (GT911 reports ~490ms)
+
+// ── View picker popup ───────────────────────────────────────────────
+static bool g_viewPickerOpen = false;
+static unsigned long g_viewPickerOpenTime = 0;
+static constexpr unsigned long VIEW_PICKER_TIMEOUT_MS = 5000;
+
 // ── Forward declarations ────────────────────────────────────────────
 void handleWiFiConnecting();
 void handleDiscovering();
@@ -57,6 +74,9 @@ void subscribeAll();
 void subscribeCell(int cellIndex);
 void unsubscribeCell(int cellIndex);
 void handleTouchInput();
+void switchView(int viewIndex);
+void drawViewPicker(LGFX_Sprite& fb);
+void drawViewOverlay(LGFX_Sprite& fb);
 
 void setup() {
     Serial.begin(115200);
@@ -192,22 +212,28 @@ void subscribeAll() {
 
 void subscribeCell(int cellIndex) {
     const GaugeConfig& cfg = g_layout.gauge(cellIndex)->getConfig();
+
+    // Slot 0: primary dataref at index = cellIndex (0-5)
     g_xplane.subscribe(cfg.dataref, XPLANE_FREQ, cellIndex);
 
-    // Subscribe secondary dataref for position gauge
-    if (g_layout.needsSecondary(cellIndex)) {
-        g_xplane.subscribe(PositionGauge::secondaryDataref(), XPLANE_FREQ,
-                          PositionGauge::SECONDARY_INDEX_BASE + cellIndex);
+    // Slots 1-7: extra datarefs at index = slot * 10 + cellIndex
+    for (int s = 0; s < cfg.extraDatarefCount; s++) {
+        int idx = (s + 1) * 10 + cellIndex;
+        g_xplane.subscribe(cfg.extraDatarefs[s], XPLANE_FREQ, idx);
     }
+
+    // Update valueCount on CellState
+    g_layout.cell(cellIndex).valueCount = 1 + cfg.extraDatarefCount;
 }
 
 void unsubscribeCell(int cellIndex) {
     const GaugeConfig& cfg = g_layout.gauge(cellIndex)->getConfig();
+
     g_xplane.unsubscribe(cfg.dataref, cellIndex);
 
-    if (g_layout.needsSecondary(cellIndex)) {
-        g_xplane.unsubscribe(PositionGauge::secondaryDataref(),
-                            PositionGauge::SECONDARY_INDEX_BASE + cellIndex);
+    for (int s = 0; s < cfg.extraDatarefCount; s++) {
+        int idx = (s + 1) * 10 + cellIndex;
+        g_xplane.unsubscribe(cfg.extraDatarefs[s], idx);
     }
 }
 
@@ -219,30 +245,121 @@ void resubscribeAll() {
 }
 
 void handleTouchInput() {
-    lgfx::touch_point_t tp;
-    int touchCount = g_display.getTouch(&tp, 1);
+    // Read up to 2 touch points for multi-finger gesture detection
+    lgfx::touch_point_t tp[2];
+    int touchCount = g_display.getTouch(tp, 2);
     bool pressed = (touchCount > 0);
+    bool twoFingers = (touchCount >= 2);
 
     // Keep last valid touch position for use on release
     static int lastTouchX = 0, lastTouchY = 0;
     if (pressed) {
-        lastTouchX = tp.x;
-        lastTouchY = tp.y;
+        lastTouchX = tp[0].x;
+        lastTouchY = tp[0].y;
     } else {
-        tp.x = lastTouchX;
-        tp.y = lastTouchY;
+        tp[0].x = lastTouchX;
+        tp[0].y = lastTouchY;
     }
 
+    unsigned long now = millis();
+
+    // ── Two-finger gesture handling ─────────────────────────────────
+    if (twoFingers && !g_twoFingerActive && !g_picker.isOpen() && !g_viewPickerOpen) {
+        // Two-finger touch start
+        g_twoFingerActive = true;
+        g_twoFingerStartX0 = tp[0].x;
+        g_twoFingerStartX1 = tp[1].x;
+        g_twoFingerStartMs = now;
+        g_twoFingerSwipeTriggered = false;
+    }
+
+    if (twoFingers && g_twoFingerActive && !g_twoFingerSwipeTriggered) {
+        // Check for horizontal swipe — average of both fingers
+        if (now - g_viewChangeDebounce > VIEW_DEBOUNCE_MS) {
+            int dx0 = tp[0].x - g_twoFingerStartX0;
+            int dx1 = tp[1].x - g_twoFingerStartX1;
+            int avgDx = (dx0 + dx1) / 2;
+            if (avgDx > SWIPE_THRESHOLD) {
+                g_viewManager.nextView();
+                switchView(g_viewManager.currentView());
+                g_viewChangeDebounce = now;
+                g_twoFingerSwipeTriggered = true;
+            } else if (avgDx < -SWIPE_THRESHOLD) {
+                g_viewManager.prevView();
+                switchView(g_viewManager.currentView());
+                g_viewChangeDebounce = now;
+                g_twoFingerSwipeTriggered = true;
+            }
+        }
+    }
+
+    if (!twoFingers && g_twoFingerActive) {
+        // Two-finger release (at least one finger lifted)
+        unsigned long dur = now - g_twoFingerStartMs;
+        if (!g_twoFingerSwipeTriggered && (dur < TWO_FINGER_TAP_MS)) {
+            // Short two-finger tap → open view picker
+            g_viewPickerOpen = true;
+            g_viewPickerOpenTime = now;
+        }
+        g_twoFingerActive = false;
+        // Suppress single-finger tap until all fingers are released
+        g_suppressNextTap = true;
+    }
+
+    // Clear suppression when all fingers are off the screen
+    if (!pressed && g_suppressNextTap) {
+        g_suppressNextTap = false;
+        g_touchActive = false;  // Reset single-finger state too
+    }
+
+    // ── View picker touch handling ──────────────────────────────────
+    if (g_viewPickerOpen) {
+        // Auto-close timeout
+        if (now - g_viewPickerOpenTime > VIEW_PICKER_TIMEOUT_MS) {
+            g_viewPickerOpen = false;
+        }
+        // Single-finger tap to select view (300ms grace after open to skip stray finger)
+        if (pressed && !twoFingers && touchCount == 1 &&
+            (now - g_viewPickerOpenTime > 300)) {
+            int pickerW = 300;
+            int rowH = 70;
+            int headerH = 60;
+            int pickerH = VIEW_COUNT * rowH + headerH;
+            int px = (SCREEN_WIDTH - pickerW) / 2;
+            int py = (SCREEN_HEIGHT - pickerH) / 2;
+
+            if (tp[0].x >= px && tp[0].x < px + pickerW &&
+                tp[0].y >= py + headerH && tp[0].y < py + pickerH) {
+                int row = (tp[0].y - py - headerH) / rowH;
+                if (row >= 0 && row < VIEW_COUNT) {
+                    g_viewManager.setView(row);
+                    switchView(row);
+                    g_viewPickerOpen = false;
+                }
+            } else if (tp[0].x < px || tp[0].x >= px + pickerW ||
+                       tp[0].y < py || tp[0].y >= py + pickerH) {
+                // Tap outside — close
+                g_viewPickerOpen = false;
+            }
+        }
+        // Consume touch — don't pass to gauge picker or cell tap
+        return;
+    }
+
+    // Skip single-finger processing if two fingers are active or suppressed
+    if (g_twoFingerActive || g_suppressNextTap) return;
+
+    // ── Single-finger touch handling (existing logic) ───────────────
     if (pressed && !g_touchActive) {
         // Touch start
         g_touchActive = true;
-        g_touchStartMs = millis();
+        g_touchStartMs = now;
         g_touchStartCell = -1;
         g_longPressTriggered = false;
 
         if (!g_picker.isOpen()) {
-            int col = tp.x / CELL_WIDTH;
-            int row = tp.y / CELL_HEIGHT;
+            int col = tp[0].x / CELL_WIDTH;
+            int row = tp[0].y / CELL_HEIGHT;
             if (col >= 0 && col < GRID_COLS && row >= 0 && row < GRID_ROWS) {
                 g_touchStartCell = row * GRID_COLS + col;
             }
@@ -251,17 +368,21 @@ void handleTouchInput() {
 
     // Long-press detection (mute toggle) — only when picker is closed
     if (pressed && g_touchActive && !g_longPressTriggered && !g_picker.isOpen()) {
-        if (millis() - g_touchStartMs >= MUTE_HOLD_MS) {
+        if (now - g_touchStartMs >= MUTE_HOLD_MS) {
             g_longPressTriggered = true;
             g_buzzer.toggleMute();
-            g_muteFlashEnd = millis() + 1000;
+            g_muteFlashEnd = now + 1000;
         }
     }
 
     // Forward all touch events to picker
     if (g_picker.isOpen() && !g_longPressTriggered) {
-        bool changed = g_picker.handleTouch(tp.x, tp.y, pressed);
+        bool changed = g_picker.handleTouch(tp[0].x, tp[0].y, pressed);
         if (changed) {
+            // When gauge picker changes a gauge in CUSTOM view, stay in custom
+            if (g_viewManager.currentView() != VIEW_CUSTOM) {
+                g_viewManager.setView(VIEW_CUSTOM);
+            }
             resubscribeAll();
         }
     }
@@ -275,6 +396,85 @@ void handleTouchInput() {
     }
 }
 
+void switchView(int viewIndex) {
+    if (viewIndex == VIEW_CUSTOM) {
+        // Reload user's saved layout from NVS
+        g_layout.begin();
+    } else {
+        // Apply predefined view layout
+        const ViewDef& v = g_views[viewIndex];
+        for (int i = 0; i < CELL_COUNT; i++) {
+            g_layout.cell(i).gaugeIndex = v.gauges[i];
+            g_layout.cell(i).valueCount = 1 + g_gauges[v.gauges[i]]->getConfig().extraDatarefCount;
+            for (int s = 0; s < MAX_VALUES; s++) {
+                g_layout.cell(i).values[s] = 0.0f;
+                g_layout.cell(i).smoothedValues[s] = 0.0f;
+            }
+            g_layout.cell(i).hasData = false;
+        }
+    }
+    resubscribeAll();
+}
+
+void drawViewPicker(LGFX_Sprite& fb) {
+    if (!g_viewPickerOpen) return;
+
+    int pickerW = 300;
+    int rowH = 70;
+    int headerH = 60;
+    int pickerH = VIEW_COUNT * rowH + headerH;
+    int px = (SCREEN_WIDTH - pickerW) / 2;
+    int py = (SCREEN_HEIGHT - pickerH) / 2;
+
+    // Semi-transparent overlay effect (darken background)
+    fb.fillRect(px - 4, py - 4, pickerW + 8, pickerH + 8, COLOR_BG);
+
+    // Panel background
+    fb.fillRoundRect(px, py, pickerW, pickerH, 8, COLOR_PICKER_BG);
+    fb.drawRoundRect(px, py, pickerW, pickerH, 8, COLOR_PICKER_HL);
+
+    // Header
+    fb.setTextDatum(middle_center);
+    fb.setTextColor(COLOR_PICKER_HL);
+    fb.setTextSize(2.2);
+    fb.drawString("VIEWS", px + pickerW / 2, py + headerH / 2);
+    fb.drawFastHLine(px + 4, py + headerH, pickerW - 8, COLOR_PICKER_HL);
+
+    // View rows
+    int currentView = g_viewManager.currentView();
+    for (int i = 0; i < VIEW_COUNT; i++) {
+        int ry = py + headerH + i * rowH;
+        bool selected = (i == currentView);
+
+        if (selected) {
+            fb.fillRect(px + 4, ry + 2, pickerW - 8, rowH - 4, 0x0014);
+        }
+
+        fb.setTextDatum(middle_center);
+        fb.setTextColor(selected ? COLOR_PICKER_HL : COLOR_PICKER_FG);
+        fb.setTextSize(2.0);
+        fb.drawString(g_views[i].name, px + pickerW / 2, ry + rowH / 2);
+    }
+}
+
+void drawViewOverlay(LGFX_Sprite& fb) {
+    if (!g_viewManager.shouldShowName()) return;
+
+    // Show current view name at bottom center
+    fb.setTextDatum(bottom_center);
+    fb.setTextColor(COLOR_PICKER_HL);
+    fb.setTextSize(1.8);
+
+    // Background bar
+    int textW = 120;
+    int textH = 28;
+    int bx = SCREEN_WIDTH / 2 - textW / 2;
+    int by = SCREEN_HEIGHT - textH - 4;
+    fb.fillRoundRect(bx, by, textW, textH, 4, COLOR_PICKER_BG);
+    fb.drawRoundRect(bx, by, textW, textH, 4, COLOR_PICKER_HL);
+    fb.drawString(g_viewManager.currentViewName(), SCREEN_WIDTH / 2, SCREEN_HEIGHT - 6);
+}
+
 void handleRunning() {
     if (!g_wifi.isConnected()) {
         g_state = STATE_WIFI_CONNECTING;
@@ -285,25 +485,30 @@ void handleRunning() {
     handleTouchInput();
     g_picker.update();
 
-    // Receive data from X-Plane
+    // Receive data from X-Plane — route by slot*10+cell index scheme
     int idx;
     float val;
     while (g_xplane.receive(idx, val)) {
-        // Direct cell index (0-5)
-        if (idx >= 0 && idx < CELL_COUNT) {
-            CellState& cs = g_layout.cell(idx);
-            cs.rawValue = val;
+        int slot = idx / 10;
+        int cellIdx = idx % 10;
+
+        // Slot 0 uses direct indices 0-5; slots 1-7 use 10-75
+        if (slot == 0 && cellIdx >= 0 && cellIdx < CELL_COUNT) {
+            CellState& cs = g_layout.cell(cellIdx);
+            cs.values[0] = val;
             cs.lastReceiveTime = millis();
             if (!cs.hasData) {
-                cs.smoothedValue = val;
+                cs.smoothedValues[0] = val;
                 cs.hasData = true;
             }
         }
-        // Secondary dataref for position gauge (100-105)
-        else if (idx >= PositionGauge::SECONDARY_INDEX_BASE &&
-                 idx < PositionGauge::SECONDARY_INDEX_BASE + CELL_COUNT) {
-            int cellIdx = idx - PositionGauge::SECONDARY_INDEX_BASE;
-            g_layout.cell(cellIdx).secondaryValue = val;
+        else if (slot >= 1 && slot <= 7 && cellIdx >= 0 && cellIdx < CELL_COUNT) {
+            CellState& cs = g_layout.cell(cellIdx);
+            cs.values[slot] = val;
+            cs.lastReceiveTime = millis();
+            if (!cs.hasData) {
+                cs.smoothedValues[slot] = val;
+            }
         }
     }
 
@@ -318,19 +523,17 @@ void handleRunning() {
 
         bool connected = cs.hasData && (now - cs.lastReceiveTime < XPLANE_TIMEOUT_MS);
         if (!connected && cs.hasData) {
-            cs.rawValue = 0.0f;
-            cs.smoothedValue = 0.0f;
+            for (int s = 0; s < cs.valueCount; s++) {
+                cs.values[s] = 0.0f;
+                cs.smoothedValues[s] = 0.0f;
+            }
             cs.hasData = false;
         }
 
         if (cs.hasData) {
-            cs.smoothedValue += SMOOTH_ALPHA * (cs.rawValue - cs.smoothedValue);
-        }
-
-        // Update position gauge secondary value
-        if (g_layout.needsSecondary(i)) {
-            PositionGauge* pg = static_cast<PositionGauge*>(g_layout.gauge(i));
-            pg->secondaryValue = cs.secondaryValue;
+            for (int s = 0; s < cs.valueCount; s++) {
+                cs.smoothedValues[s] += SMOOTH_ALPHA * (cs.values[s] - cs.smoothedValues[s]);
+            }
         }
     }
 
@@ -351,7 +554,7 @@ void handleRunning() {
     for (int i = 0; i < CELL_COUNT; i++) {
         CellState& cs = g_layout.cell(i);
         bool connected = cs.hasData && (now - cs.lastReceiveTime < XPLANE_TIMEOUT_MS);
-        g_renderer.renderCell(i, g_layout.gauge(i), cs.rawValue, cs.smoothedValue, connected);
+        g_renderer.renderCell(i, g_layout.gauge(i), cs.values, cs.smoothedValues, cs.valueCount, connected);
     }
 
     // Draw grid lines
@@ -385,6 +588,12 @@ void handleRunning() {
         fb.setTextColor(COLOR_ARC_GREEN);
         fb.drawString("UNMUTED", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
     }
+
+    // Draw view name overlay (shown briefly after switching)
+    drawViewOverlay(fb);
+
+    // Draw view picker popup (two-finger tap)
+    drawViewPicker(fb);
 
     // Push entire framebuffer to display
     g_renderer.push();
