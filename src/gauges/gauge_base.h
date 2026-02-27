@@ -48,6 +48,7 @@ public:
     virtual const GaugeConfig& getConfig() const = 0;
 
     // Override for custom rendering (heading gauge compass card, etc.)
+    // cx, cy = center coordinates of the cell being rendered into.
     // Returns true if custom rendering was handled, false to use default.
-    virtual bool customRender(void* /*sprite*/, float /*value*/) { return false; }
+    virtual bool customRender(void* /*sprite*/, float /*value*/, int /*cx*/, int /*cy*/) { return false; }
 };

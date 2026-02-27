@@ -1,7 +1,8 @@
 #pragma once
 
 #include "gauge_base.h"
-#include <M5Dial.h>
+#define LGFX_USE_V1
+#include <LovyanGFX.hpp>
 #include <cmath>
 #include "../config.h"
 
@@ -31,16 +32,15 @@ public:
         return cfg;
     }
 
-    bool customRender(void* spritePtr, float heading) override {
-        M5Canvas* canvas = static_cast<M5Canvas*>(spritePtr);
+    bool customRender(void* spritePtr, float heading, int cx, int cy) override {
+        LGFX_Sprite* canvas = static_cast<LGFX_Sprite*>(spritePtr);
 
         // Background
         canvas->fillSprite(COLOR_BG);
-        canvas->fillCircle(CENTER_X, CENTER_Y, DIAL_RADIUS, COLOR_DIAL_BG);
-        canvas->drawCircle(CENTER_X, CENTER_Y, DIAL_RADIUS, COLOR_DIAL_RIM);
+        canvas->fillCircle(cx, cy, DIAL_RADIUS, COLOR_DIAL_BG);
+        canvas->drawCircle(cx, cy, DIAL_RADIUS, COLOR_DIAL_RIM);
 
         // Draw rotating compass card
-        // Tick marks and labels rotate with heading; aircraft index is fixed at top
         for (int deg = 0; deg < 360; deg += 5) {
             float dispAngle = (float)deg - heading;
             float rad = dispAngle * DEG_TO_RAD;
@@ -52,10 +52,10 @@ public:
 
             int innerR = isMajor ? TICK_MAJOR_R : (isMedium ? TICK_MINOR_R : TICK_MINOR_R + 3);
 
-            int x1 = CENTER_X + (int)(innerR * sinA);
-            int y1 = CENTER_Y - (int)(innerR * cosA);
-            int x2 = CENTER_X + (int)(TICK_OUTER_R * sinA);
-            int y2 = CENTER_Y - (int)(TICK_OUTER_R * cosA);
+            int x1 = cx + (int)(innerR * sinA);
+            int y1 = cy - (int)(innerR * cosA);
+            int x2 = cx + (int)(TICK_OUTER_R * sinA);
+            int y2 = cy - (int)(TICK_OUTER_R * cosA);
 
             canvas->drawLine(x1, y1, x2, y2, COLOR_TICK);
             if (isMajor) {
@@ -64,8 +64,8 @@ public:
 
             // Cardinal and ordinal labels
             if (isMajor) {
-                int lx = CENTER_X + (int)(LABEL_RADIUS * sinA);
-                int ly = CENTER_Y - (int)(LABEL_RADIUS * cosA);
+                int lx = cx + (int)(LABEL_RADIUS * sinA);
+                int ly = cy - (int)(LABEL_RADIUS * cosA);
                 canvas->setTextDatum(middle_center);
                 canvas->setTextColor(COLOR_LABEL);
                 canvas->setTextSize(1.0);
@@ -91,9 +91,9 @@ public:
 
         // Fixed aircraft index triangle at top
         canvas->fillTriangle(
-            CENTER_X, CENTER_Y - TICK_OUTER_R - 5,
-            CENTER_X - 6, CENTER_Y - TICK_OUTER_R + 8,
-            CENTER_X + 6, CENTER_Y - TICK_OUTER_R + 8,
+            cx, cy - TICK_OUTER_R - 5,
+            cx - 6, cy - TICK_OUTER_R + 8,
+            cx + 6, cy - TICK_OUTER_R + 8,
             COLOR_ARC_YELLOW
         );
 
@@ -101,16 +101,16 @@ public:
         canvas->setTextDatum(middle_center);
         canvas->setTextColor(COLOR_TITLE);
         canvas->setTextSize(1.0);
-        canvas->drawString("HDG", CENTER_X, CENTER_Y - 18);
+        canvas->drawString("HDG", cx, cy - 18);
 
         canvas->setTextColor(COLOR_VALUE);
         canvas->setTextSize(1.3);
         char buf[8];
         snprintf(buf, sizeof(buf), "%03d", (int)heading % 360);
-        canvas->drawString(buf, CENTER_X, CENTER_Y + 10);
+        canvas->drawString(buf, cx, cy + 10);
 
         // Center dot
-        canvas->fillCircle(CENTER_X, CENTER_Y, 3, COLOR_HUB);
+        canvas->fillCircle(cx, cy, 3, COLOR_HUB);
 
         return true;
     }

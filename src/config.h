@@ -1,7 +1,7 @@
 #pragma once
 
 // ── Version ────────────────────────────────────────────────────────
-#define FW_VERSION "1.0.0"
+#define FW_VERSION "2.0.0"
 
 // ── X-Plane Configuration ───────────────────────────────────────────
 #define XPLANE_PORT   49000             // X-Plane UDP port (default, overridden by beacon)
@@ -9,10 +9,17 @@
 #define XPLANE_DISCOVERY_TIMEOUT_MS 30000  // Give up auto-discovery after 30s
 
 // ── Display Constants ───────────────────────────────────────────────
-#define SCREEN_WIDTH    240
-#define SCREEN_HEIGHT   240
-#define CENTER_X        120
-#define CENTER_Y        120
+#define SCREEN_WIDTH    800
+#define SCREEN_HEIGHT   480
+
+// ── Dashboard Grid (3 columns x 2 rows) ────────────────────────────
+#define GRID_COLS       3
+#define GRID_ROWS       2
+#define CELL_COUNT      (GRID_COLS * GRID_ROWS)
+#define CELL_WIDTH      266     // 800/3 ≈ 266 (last column gets 268)
+#define CELL_HEIGHT     240     // 480/2
+
+// ── Gauge Geometry (per-cell, same as M5Dial) ───────────────────────
 #define DIAL_RADIUS     110
 #define TICK_OUTER_R    105
 #define TICK_MAJOR_R    88
@@ -29,8 +36,19 @@
 #define FRAME_TIME_MS   (1000 / TARGET_FPS)
 #define SMOOTH_ALPHA    0.15f   // Exponential smoothing factor for needle
 
-// ── Gauge Selector ──────────────────────────────────────────────────
-#define SELECTOR_TIMEOUT_MS  3000   // Auto-confirm after 3 seconds
+// ── Gauge Picker ────────────────────────────────────────────────────
+#define PICKER_WIDTH        300     // Side panel width in pixels
+#define PICKER_TIMEOUT_MS   5000    // Auto-close after 5 seconds
+#define PICKER_ROW_HEIGHT   36      // Height of each gauge entry
+
+// ── Buzzer (LEDC PWM) ──────────────────────────────────────────────
+#define BUZZER_GPIO           2     // GPIO pin for external passive buzzer
+#define BUZZER_LEDC_CHANNEL   0     // LEDC channel
+#define BUZZER_LEDC_TIMER     0     // LEDC timer
+#define WARNING_BEEP_FREQ     880   // Hz (A5 note)
+#define WARNING_BEEP_ON_MS    200   // Beep duration
+#define WARNING_BEEP_OFF_MS   300   // Silence between beeps
+#define MUTE_HOLD_MS          1000  // Long-press to toggle mute
 
 // ── Colors (RGB565) ─────────────────────────────────────────────────
 #define COLOR_BG          0x0000  // Black
@@ -46,12 +64,8 @@
 #define COLOR_ARC_YELLOW  0xFFE0  // Yellow
 #define COLOR_ARC_RED     0xF800  // Red
 #define COLOR_ARC_WHITE   0xFFFF  // White
-#define COLOR_SELECTOR_BG 0x0000  // Black overlay
-#define COLOR_SELECTOR_FG 0x07FF  // Cyan text
-
-// ── Warning Beeper ─────────────────────────────────────────────────
-#define WARNING_BEEP_FREQ     880.0f   // Hz (A5 note)
-#define WARNING_BEEP_ON_MS    200      // Beep duration
-#define WARNING_BEEP_OFF_MS   300      // Silence between beeps
-#define WARNING_VOLUME        80       // Speaker volume (0-255)
-#define MUTE_HOLD_MS          1000     // Hold button this long to toggle mute
+#define COLOR_GRID_LINE   0x4208  // Medium gray for grid borders
+#define COLOR_CELL_SEL    0x07FF  // Cyan highlight for selected cell
+#define COLOR_PICKER_BG   0x10A2  // Dark panel background
+#define COLOR_PICKER_FG   0xFFFF  // Picker text
+#define COLOR_PICKER_HL   0x07FF  // Picker highlight

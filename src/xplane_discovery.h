@@ -1,6 +1,7 @@
 #pragma once
 
-#include <M5Dial.h>
+#define LGFX_USE_V1
+#include <LovyanGFX.hpp>
 #include <WiFiUdp.h>
 #include <IPAddress.h>
 #include <cstdint>
@@ -13,7 +14,7 @@ class XPlaneDiscovery {
 public:
     void begin();
     bool listen();           // Returns true when a beacon is found
-    void drawStatus(M5GFX& display);
+    void drawStatus(LGFX_Sprite& fb);
 
     IPAddress   foundIP()   const { return _ip; }
     uint16_t    foundPort() const { return _port; }

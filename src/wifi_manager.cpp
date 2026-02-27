@@ -23,23 +23,26 @@ void WiFiManager::ensureConnected() {
     _wifiMulti.run();
 }
 
-void WiFiManager::drawStatus(M5GFX& display) {
-    display.fillScreen(COLOR_BG);
-    display.setTextDatum(middle_center);
+void WiFiManager::drawStatus(LGFX_Sprite& fb) {
+    int cx = SCREEN_WIDTH / 2;
+    int cy = SCREEN_HEIGHT / 2;
+
+    fb.fillSprite(COLOR_BG);
+    fb.setTextDatum(middle_center);
 
     if (isConnected()) {
-        display.setTextColor(COLOR_ARC_GREEN);
-        display.setTextSize(1.5);
-        display.drawString("WiFi Connected", CENTER_X, CENTER_Y - 25);
-        display.setTextColor(COLOR_LABEL);
-        display.setTextSize(1.1);
-        display.drawString(WiFi.localIP().toString().c_str(), CENTER_X, CENTER_Y + 15);
+        fb.setTextColor(COLOR_ARC_GREEN);
+        fb.setTextSize(2.0);
+        fb.drawString("WiFi Connected", cx, cy - 30);
+        fb.setTextColor(COLOR_LABEL);
+        fb.setTextSize(1.5);
+        fb.drawString(WiFi.localIP().toString().c_str(), cx, cy + 20);
     } else {
-        display.setTextColor(COLOR_ARC_YELLOW);
-        display.setTextSize(1.4);
-        display.drawString("Scanning WiFi...", CENTER_X, CENTER_Y - 15);
-        display.setTextColor(COLOR_LABEL);
-        display.setTextSize(1.1);
-        display.drawString(WiFi.SSID().c_str(), CENTER_X, CENTER_Y + 20);
+        fb.setTextColor(COLOR_ARC_YELLOW);
+        fb.setTextSize(2.0);
+        fb.drawString("Scanning WiFi...", cx, cy - 20);
+        fb.setTextColor(COLOR_LABEL);
+        fb.setTextSize(1.5);
+        fb.drawString(WiFi.SSID().c_str(), cx, cy + 30);
     }
 }

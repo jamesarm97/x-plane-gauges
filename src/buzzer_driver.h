@@ -1,41 +1,32 @@
 #pragma once
 
-#include <M5Dial.h>
+#include <Arduino.h>
 #include "config.h"
-#include "gauges/gauge_base.h"
+#include "dashboard_layout.h"
 
-class WarningBeeper {
+class BuzzerDriver {
 public:
     void begin() {
-        M5Dial.Speaker.setVolume(WARNING_VOLUME);
+        // Configure LEDC for PWM tone generation
+        ledcSetup(BUZZER_LEDC_CHANNEL, WARNING_BEEP_FREQ, 8);  // 8-bit resolution
+        ledcAttachPin(BUZZER_GPIO, BUZZER_LEDC_CHANNEL);
+        ledcWrite(BUZZER_LEDC_CHANNEL, 0);  // Start silent
+
         _inRedZone = false;
         _beepOn = false;
         _muted = false;
         _lastToggleMs = 0;
     }
 
-    void update(const GaugeConfig& cfg, float value, bool hasData) {
-        if (!hasData || cfg.customRenderer) {
-            if (_inRedZone) stop();
-            return;
-        }
-
-        bool inRed = false;
-        for (size_t i = 0; i < cfg.arcCount; i++) {
-            if (cfg.arcs[i].color == COLOR_ARC_RED &&
-                value >= cfg.arcs[i].startValue &&
-                value <= cfg.arcs[i].endValue) {
-                inRed = true;
-                break;
-            }
-        }
+    void updateAll(DashboardLayout& layout) {
+        bool inRed = layout.anyRedZone();
 
         if (inRed && !_inRedZone) {
             _inRedZone = true;
             if (!_muted) {
                 _beepOn = true;
                 _lastToggleMs = millis();
-                M5Dial.Speaker.tone(WARNING_BEEP_FREQ, WARNING_BEEP_ON_MS);
+                toneOn();
             }
         } else if (!inRed && _inRedZone) {
             stop();
@@ -45,10 +36,11 @@ public:
             if (_beepOn && elapsed >= WARNING_BEEP_ON_MS) {
                 _beepOn = false;
                 _lastToggleMs = now;
+                toneOff();
             } else if (!_beepOn && elapsed >= WARNING_BEEP_OFF_MS) {
                 _beepOn = true;
                 _lastToggleMs = now;
-                M5Dial.Speaker.tone(WARNING_BEEP_FREQ, WARNING_BEEP_ON_MS);
+                toneOn();
             }
         }
     }
@@ -57,11 +49,11 @@ public:
         _muted = !_muted;
         if (_muted) {
             _beepOn = false;
-            M5Dial.Speaker.stop();
+            toneOff();
         } else if (_inRedZone) {
             _beepOn = true;
             _lastToggleMs = millis();
-            M5Dial.Speaker.tone(WARNING_BEEP_FREQ, WARNING_BEEP_ON_MS);
+            toneOn();
         }
     }
 
@@ -70,7 +62,7 @@ public:
     void stop() {
         _inRedZone = false;
         _beepOn = false;
-        M5Dial.Speaker.stop();
+        toneOff();
     }
 
 private:
@@ -78,4 +70,13 @@ private:
     bool _beepOn = false;
     bool _muted = false;
     unsigned long _lastToggleMs = 0;
+
+    void toneOn() {
+        ledcWriteTone(BUZZER_LEDC_CHANNEL, WARNING_BEEP_FREQ);
+        ledcWrite(BUZZER_LEDC_CHANNEL, 128);  // 50% duty cycle
+    }
+
+    void toneOff() {
+        ledcWrite(BUZZER_LEDC_CHANNEL, 0);
+    }
 };

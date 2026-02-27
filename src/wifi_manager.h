@@ -1,6 +1,7 @@
 #pragma once
 
-#include <M5Dial.h>
+#define LGFX_USE_V1
+#include <LovyanGFX.hpp>
 #include <WiFi.h>
 #include <WiFiMulti.h>
 
@@ -14,7 +15,7 @@ public:
     void begin(const WiFiCredential* networks, int count);
     bool isConnected();
     void ensureConnected();
-    void drawStatus(M5GFX& display);
+    void drawStatus(LGFX_Sprite& fb);
 
 private:
     WiFiMulti _wifiMulti;

@@ -1,15 +1,16 @@
 #pragma once
 
 #include "gauge_base.h"
-#include <M5Dial.h>
+#define LGFX_USE_V1
+#include <LovyanGFX.hpp>
 #include <cmath>
 #include "../config.h"
 
-// Secondary value stored by main.cpp when position gauge is active
-extern float g_secondaryValue;
-
 class PositionGauge : public GaugeBase {
 public:
+    // Secondary value (longitude) stored per-cell by dashboard
+    float secondaryValue = 0.0f;
+
     const GaugeConfig& getConfig() const override {
         static const GaugeConfig cfg = {
             .title        = "POSITION",
@@ -32,22 +33,22 @@ public:
 
     // Secondary dataref for longitude
     static const char* secondaryDataref() { return "sim/flightmodel/position/longitude"; }
-    static constexpr int SECONDARY_INDEX = 100;
+    static constexpr int SECONDARY_INDEX_BASE = 100;  // + cellIndex for per-cell secondary
 
-    bool customRender(void* spritePtr, float lat) override {
-        M5Canvas* canvas = static_cast<M5Canvas*>(spritePtr);
-        float lon = g_secondaryValue;
+    bool customRender(void* spritePtr, float lat, int cx, int cy) override {
+        LGFX_Sprite* canvas = static_cast<LGFX_Sprite*>(spritePtr);
+        float lon = secondaryValue;
 
         canvas->fillSprite(COLOR_BG);
-        canvas->fillCircle(CENTER_X, CENTER_Y, DIAL_RADIUS, COLOR_DIAL_BG);
-        canvas->drawCircle(CENTER_X, CENTER_Y, DIAL_RADIUS, COLOR_DIAL_RIM);
-        canvas->drawCircle(CENTER_X, CENTER_Y, DIAL_RADIUS - 1, COLOR_DIAL_RIM);
+        canvas->fillCircle(cx, cy, DIAL_RADIUS, COLOR_DIAL_BG);
+        canvas->drawCircle(cx, cy, DIAL_RADIUS, COLOR_DIAL_RIM);
+        canvas->drawCircle(cx, cy, DIAL_RADIUS - 1, COLOR_DIAL_RIM);
 
         // Title
         canvas->setTextDatum(middle_center);
         canvas->setTextColor(COLOR_TITLE);
         canvas->setTextSize(1.0);
-        canvas->drawString("POSITION", CENTER_X, CENTER_Y - 65);
+        canvas->drawString("POSITION", cx, cy - 65);
 
         // ── Latitude ──
         char ns = (lat >= 0) ? 'N' : 'S';
@@ -57,13 +58,13 @@ public:
 
         canvas->setTextColor(COLOR_LABEL);
         canvas->setTextSize(0.8);
-        canvas->drawString("LAT", CENTER_X, CENTER_Y - 40);
+        canvas->drawString("LAT", cx, cy - 40);
 
         canvas->setTextColor(COLOR_VALUE);
         canvas->setTextSize(1.2);
         char buf[24];
         snprintf(buf, sizeof(buf), "%c %d %05.2f'", ns, latDeg, latMin);
-        canvas->drawString(buf, CENTER_X, CENTER_Y - 18);
+        canvas->drawString(buf, cx, cy - 18);
 
         // ── Longitude ──
         char ew = (lon >= 0) ? 'E' : 'W';
@@ -73,12 +74,12 @@ public:
 
         canvas->setTextColor(COLOR_LABEL);
         canvas->setTextSize(0.8);
-        canvas->drawString("LON", CENTER_X, CENTER_Y + 8);
+        canvas->drawString("LON", cx, cy + 8);
 
         canvas->setTextColor(COLOR_VALUE);
         canvas->setTextSize(1.2);
         snprintf(buf, sizeof(buf), "%c %d %05.2f'", ew, lonDeg, lonMin);
-        canvas->drawString(buf, CENTER_X, CENTER_Y + 30);
+        canvas->drawString(buf, cx, cy + 30);
 
         return true;
     }

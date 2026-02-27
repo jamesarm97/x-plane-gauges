@@ -1,7 +1,8 @@
 #pragma once
 
 #include "gauge_base.h"
-#include <M5Dial.h>
+#define LGFX_USE_V1
+#include <LovyanGFX.hpp>
 #include <cmath>
 #include "../config.h"
 
@@ -27,19 +28,19 @@ public:
         return cfg;
     }
 
-    bool customRender(void* spritePtr, float lon) override {
-        M5Canvas* canvas = static_cast<M5Canvas*>(spritePtr);
+    bool customRender(void* spritePtr, float lon, int cx, int cy) override {
+        LGFX_Sprite* canvas = static_cast<LGFX_Sprite*>(spritePtr);
 
         canvas->fillSprite(COLOR_BG);
-        canvas->fillCircle(CENTER_X, CENTER_Y, DIAL_RADIUS, COLOR_DIAL_BG);
-        canvas->drawCircle(CENTER_X, CENTER_Y, DIAL_RADIUS, COLOR_DIAL_RIM);
-        canvas->drawCircle(CENTER_X, CENTER_Y, DIAL_RADIUS - 1, COLOR_DIAL_RIM);
+        canvas->fillCircle(cx, cy, DIAL_RADIUS, COLOR_DIAL_BG);
+        canvas->drawCircle(cx, cy, DIAL_RADIUS, COLOR_DIAL_RIM);
+        canvas->drawCircle(cx, cy, DIAL_RADIUS - 1, COLOR_DIAL_RIM);
 
         // Title
         canvas->setTextDatum(middle_center);
         canvas->setTextColor(COLOR_TITLE);
         canvas->setTextSize(1.0);
-        canvas->drawString("LONGITUDE", CENTER_X, CENTER_Y - 50);
+        canvas->drawString("LONGITUDE", cx, cy - 50);
 
         // E/W indicator
         char ew = (lon >= 0) ? 'E' : 'W';
@@ -54,13 +55,13 @@ public:
         canvas->setTextSize(1.8);
         char buf[16];
         snprintf(buf, sizeof(buf), "%c %d", ew, deg);
-        canvas->drawString(buf, CENTER_X, CENTER_Y - 10);
+        canvas->drawString(buf, cx, cy - 10);
 
         // Minutes below
         canvas->setTextSize(1.3);
         canvas->setTextColor(COLOR_LABEL);
         snprintf(buf, sizeof(buf), "%06.3f'", minutes);
-        canvas->drawString(buf, CENTER_X, CENTER_Y + 25);
+        canvas->drawString(buf, cx, cy + 25);
 
         return true;
     }

@@ -1,12 +1,15 @@
-#include <M5Dial.h>
+#include <Arduino.h>
+#include "display_driver.h"
 #include "config.h"
 #include "wifi_manager.h"
 #include "wifi_credentials.h"
 #include "xplane_discovery.h"
 #include "xplane_client.h"
 #include "gauge_renderer.h"
-#include "gauge_selector.h"
-#include "warning_beeper.h"
+#include "dashboard_layout.h"
+#include "gauge_picker.h"
+#include "buzzer_driver.h"
+#include "gauges/gauge_registry.h"
 #include "gauges/position_gauge.h"
 
 // ── Application State ───────────────────────────────────────────────
@@ -21,30 +24,25 @@ static WiFiManager       g_wifi;
 static XPlaneDiscovery   g_discovery;
 static XPlaneClient      g_xplane;
 static GaugeRenderer     g_renderer;
-static GaugeSelector     g_selector;
-static WarningBeeper     g_beeper;
+static DashboardLayout   g_layout;
+static GaugePicker       g_picker;
+static BuzzerDriver      g_buzzer;
 
-// ── Discovered X-Plane address (stored as string for XPlaneClient) ──
+// ── Discovered X-Plane address ──────────────────────────────────────
 static char g_xplaneIP[20] = {0};
 static uint16_t g_xplanePort = XPLANE_PORT;
 
-// ── Needle smoothing state ──────────────────────────────────────────
-static float g_rawValue      = 0.0f;
-static float g_smoothedValue = 0.0f;
-static bool  g_hasData       = false;
-static unsigned long g_lastFrameTime   = 0;
-static unsigned long g_lastReceiveTime = 0;
+// ── Timing ──────────────────────────────────────────────────────────
+static unsigned long g_lastFrameTime = 0;
 static constexpr unsigned long XPLANE_TIMEOUT_MS = 2000;
 
-// ── Secondary dataref for position gauge ────────────────────────────
-float g_secondaryValue = 0.0f;
-static bool g_secondaryActive = false;
+// ── Touch state ─────────────────────────────────────────────────────
+static bool g_touchActive = false;
+static unsigned long g_touchStartMs = 0;
+static int g_touchStartCell = -1;
+static bool g_longPressTriggered = false;
 
-// ── Discovery timing ────────────────────────────────────────────────
-static unsigned long g_discoveryStart = 0;
-
-// ── Mute long-press tracking ───────────────────────────────────────
-static bool g_muteHoldTriggered = false;
+// ── Mute flash ──────────────────────────────────────────────────────
 static unsigned long g_muteFlashEnd = 0;
 
 // ── Forward declarations ────────────────────────────────────────────
@@ -52,24 +50,49 @@ void handleWiFiConnecting();
 void handleDiscovering();
 void handleRunning();
 void startRunning();
-void updateSecondarySubscription();
+void subscribeAll();
+void subscribeCell(int cellIndex);
+void unsubscribeCell(int cellIndex);
+void handleTouchInput();
 
 void setup() {
-    auto cfg = M5.config();
-    M5Dial.begin(cfg, true, false);
+    Serial.begin(115200);
+    delay(100);
+    Serial.println("[Boot] X-Plane Dashboard v" FW_VERSION);
 
-    M5Dial.Display.setRotation(0);
-    M5Dial.Display.fillScreen(COLOR_BG);
-    M5Dial.Display.setTextDatum(middle_center);
-    M5Dial.Display.setTextColor(COLOR_TITLE);
-    M5Dial.Display.setTextSize(1.5);
-    M5Dial.Display.drawString("X-Plane Gauge", CENTER_X, CENTER_Y - 15);
-    M5Dial.Display.setTextSize(1.0);
-    M5Dial.Display.setTextColor(COLOR_DIAL_RIM);
-    M5Dial.Display.drawString("v" FW_VERSION, CENTER_X, CENTER_Y + 10);
-    M5Dial.Display.setTextColor(COLOR_LABEL);
-    M5Dial.Display.drawString("Initializing...", CENTER_X, CENTER_Y + 30);
+    // Initialize display + backlight via CH422G
+    display_init();
+    Serial.println("[Boot] Display initialized");
+
+    // Splash screen
+    LGFX_Sprite splash;
+    splash.setPsram(true);
+    splash.setColorDepth(16);
+    splash.createSprite(SCREEN_WIDTH, SCREEN_HEIGHT);
+    splash.fillSprite(COLOR_BG);
+    splash.setTextDatum(middle_center);
+
+    int cx = SCREEN_WIDTH / 2;
+    int cy = SCREEN_HEIGHT / 2;
+
+    splash.setTextColor(COLOR_TITLE);
+    splash.setTextSize(2.5);
+    splash.drawString("X-Plane Dashboard", cx, cy - 30);
+
+    splash.setTextColor(COLOR_DIAL_RIM);
+    splash.setTextSize(1.5);
+    splash.drawString("v" FW_VERSION, cx, cy + 15);
+
+    splash.setTextColor(COLOR_LABEL);
+    splash.setTextSize(1.2);
+    splash.drawString("Initializing...", cx, cy + 50);
+
+    splash.pushSprite(&g_display, 0, 0);
+    splash.deleteSprite();
     delay(500);
+
+    // Initialize renderer (creates PSRAM framebuffer)
+    g_renderer.begin(&g_display);
 
     g_wifi.begin(WIFI_NETWORKS, WIFI_NETWORK_COUNT);
     g_state = STATE_WIFI_CONNECTING;
@@ -91,14 +114,14 @@ void loop() {
 
 void handleWiFiConnecting() {
     g_wifi.ensureConnected();
-    g_wifi.drawStatus(M5Dial.Display);
+
+    LGFX_Sprite& fb = g_renderer.getFramebuffer();
+    g_wifi.drawStatus(fb);
+    fb.pushSprite(&g_display, 0, 0);
 
     if (g_wifi.isConnected()) {
         delay(500);
-
-        // Start beacon discovery
         g_discovery.begin();
-        g_discoveryStart = millis();
         g_state = STATE_DISCOVERING;
     } else {
         delay(200);
@@ -118,55 +141,129 @@ void handleDiscovering() {
         g_xplanePort = g_discovery.foundPort();
 
         // Show discovery result
-        M5Dial.Display.fillScreen(COLOR_BG);
-        M5Dial.Display.setTextDatum(middle_center);
-        M5Dial.Display.setTextColor(COLOR_ARC_GREEN);
-        M5Dial.Display.setTextSize(1.5);
-        M5Dial.Display.drawString("X-Plane Found!", CENTER_X, CENTER_Y - 35);
-        M5Dial.Display.setTextColor(COLOR_VALUE);
-        M5Dial.Display.setTextSize(1.2);
-        M5Dial.Display.drawString(g_xplaneIP, CENTER_X, CENTER_Y + 5);
-        M5Dial.Display.setTextColor(COLOR_DIAL_RIM);
-        M5Dial.Display.setTextSize(1.0);
-        M5Dial.Display.drawString(g_discovery.computerName(), CENTER_X, CENTER_Y + 35);
+        LGFX_Sprite& fb = g_renderer.getFramebuffer();
+        int cx = SCREEN_WIDTH / 2;
+        int cy = SCREEN_HEIGHT / 2;
+
+        fb.fillSprite(COLOR_BG);
+        fb.setTextDatum(middle_center);
+        fb.setTextColor(COLOR_ARC_GREEN);
+        fb.setTextSize(2.5);
+        fb.drawString("X-Plane Found!", cx, cy - 40);
+        fb.setTextColor(COLOR_VALUE);
+        fb.setTextSize(1.8);
+        fb.drawString(g_xplaneIP, cx, cy + 10);
+        fb.setTextColor(COLOR_DIAL_RIM);
+        fb.setTextSize(1.2);
+        fb.drawString(g_discovery.computerName(), cx, cy + 50);
+        fb.pushSprite(&g_display, 0, 0);
         delay(1500);
 
         startRunning();
     } else {
         // Show searching animation
-        g_discovery.drawStatus(M5Dial.Display);
+        LGFX_Sprite& fb = g_renderer.getFramebuffer();
+        g_discovery.drawStatus(fb);
+        fb.pushSprite(&g_display, 0, 0);
         delay(200);
     }
 }
 
 void startRunning() {
     g_xplane.begin(g_xplaneIP, g_xplanePort);
-    g_renderer.begin();
-    g_selector.begin(&g_xplane);
-    g_beeper.begin();
+    g_layout.begin();
+    g_picker.begin(&g_layout);
+    g_buzzer.begin();
 
-    const GaugeConfig& cfg = g_selector.currentGauge()->getConfig();
-    g_xplane.subscribe(cfg.dataref, XPLANE_FREQ, g_selector.currentIndex());
+    subscribeAll();
 
-    g_rawValue = 0.0f;
-    g_smoothedValue = 0.0f;
-    g_hasData = false;
     g_lastFrameTime = millis();
-
     g_state = STATE_RUNNING;
 }
 
-void updateSecondarySubscription() {
-    bool needsSecondary = (g_selector.currentGauge() == &g_positionGauge);
+void subscribeAll() {
+    for (int i = 0; i < CELL_COUNT; i++) {
+        subscribeCell(i);
+    }
+}
 
-    if (needsSecondary && !g_secondaryActive) {
-        g_xplane.subscribe(PositionGauge::secondaryDataref(), XPLANE_FREQ, PositionGauge::SECONDARY_INDEX);
-        g_secondaryActive = true;
-        g_secondaryValue = 0.0f;
-    } else if (!needsSecondary && g_secondaryActive) {
-        g_xplane.unsubscribe(PositionGauge::secondaryDataref(), PositionGauge::SECONDARY_INDEX);
-        g_secondaryActive = false;
-        g_secondaryValue = 0.0f;
+void subscribeCell(int cellIndex) {
+    const GaugeConfig& cfg = g_layout.gauge(cellIndex)->getConfig();
+    g_xplane.subscribe(cfg.dataref, XPLANE_FREQ, cellIndex);
+
+    // Subscribe secondary dataref for position gauge
+    if (g_layout.needsSecondary(cellIndex)) {
+        g_xplane.subscribe(PositionGauge::secondaryDataref(), XPLANE_FREQ,
+                          PositionGauge::SECONDARY_INDEX_BASE + cellIndex);
+    }
+}
+
+void unsubscribeCell(int cellIndex) {
+    const GaugeConfig& cfg = g_layout.gauge(cellIndex)->getConfig();
+    g_xplane.unsubscribe(cfg.dataref, cellIndex);
+
+    if (g_layout.needsSecondary(cellIndex)) {
+        g_xplane.unsubscribe(PositionGauge::secondaryDataref(),
+                            PositionGauge::SECONDARY_INDEX_BASE + cellIndex);
+    }
+}
+
+void resubscribeAll() {
+    for (int i = 0; i < CELL_COUNT; i++) {
+        unsubscribeCell(i);
+        subscribeCell(i);
+    }
+}
+
+void handleTouchInput() {
+    lgfx::touch_point_t tp;
+    int touchCount = g_display.getTouch(&tp, 1);
+    bool pressed = (touchCount > 0);
+
+    if (pressed && !g_touchActive) {
+        // Touch start
+        g_touchActive = true;
+        g_touchStartMs = millis();
+        g_touchStartCell = -1;
+        g_longPressTriggered = false;
+
+        if (!g_picker.isOpen()) {
+            int col = tp.x / CELL_WIDTH;
+            int row = tp.y / CELL_HEIGHT;
+            if (col >= 0 && col < GRID_COLS && row >= 0 && row < GRID_ROWS) {
+                g_touchStartCell = row * GRID_COLS + col;
+            }
+        }
+    }
+
+    // Long-press detection (mute toggle) — only when picker is closed
+    if (pressed && g_touchActive && !g_longPressTriggered && !g_picker.isOpen()) {
+        if (millis() - g_touchStartMs >= MUTE_HOLD_MS) {
+            g_longPressTriggered = true;
+            g_buzzer.toggleMute();
+            g_muteFlashEnd = millis() + 1000;
+        }
+    }
+
+    // Forward all touch events to picker
+    if (g_picker.isOpen() && !g_longPressTriggered) {
+        bool changed = g_picker.handleTouch(tp.x, tp.y, pressed);
+        if (changed) {
+            resubscribeAll();
+        }
+    }
+
+    if (!pressed && g_touchActive) {
+        // Touch release — open picker on short tap when picker is closed
+        if (!g_longPressTriggered && !g_picker.isOpen() && g_touchStartCell >= 0) {
+            // Simulate press+release to open picker for this cell
+            int ox, oy, w, h;
+            GaugeRenderer::cellOrigin(g_touchStartCell, ox, oy);
+            GaugeRenderer::cellSize(g_touchStartCell, w, h);
+            g_picker.handleTouch(ox + w / 2, oy + h / 2, true);
+            g_picker.handleTouch(ox + w / 2, oy + h / 2, false);
+        }
+        g_touchActive = false;
     }
 }
 
@@ -176,89 +273,101 @@ void handleRunning() {
         return;
     }
 
-    g_selector.update();
+    // Process touch input
+    handleTouchInput();
+    g_picker.update();
 
-    // Long-press button to toggle mute (only when not selecting a gauge)
-    if (!g_selector.isSelecting() && M5Dial.BtnA.pressedFor(MUTE_HOLD_MS)) {
-        if (!g_muteHoldTriggered) {
-            g_muteHoldTriggered = true;
-            g_beeper.toggleMute();
-            g_muteFlashEnd = millis() + 1000;
-        }
-    }
-    if (!M5Dial.BtnA.isPressed()) {
-        g_muteHoldTriggered = false;
-    }
-
-    if (g_selector.selectionChanged()) {
-        g_rawValue = 0.0f;
-        g_smoothedValue = 0.0f;
-        g_hasData = false;
-        g_beeper.stop();
-        updateSecondarySubscription();
-    }
-
+    // Receive data from X-Plane
     int idx;
     float val;
     while (g_xplane.receive(idx, val)) {
-        g_lastReceiveTime = millis();
-        if (idx == g_selector.currentIndex()) {
-            g_rawValue = val;
-            if (!g_hasData) {
-                g_smoothedValue = val;
-                g_hasData = true;
+        // Direct cell index (0-5)
+        if (idx >= 0 && idx < CELL_COUNT) {
+            CellState& cs = g_layout.cell(idx);
+            cs.rawValue = val;
+            cs.lastReceiveTime = millis();
+            if (!cs.hasData) {
+                cs.smoothedValue = val;
+                cs.hasData = true;
             }
-        } else if (idx == PositionGauge::SECONDARY_INDEX) {
-            g_secondaryValue = val;
+        }
+        // Secondary dataref for position gauge (100-105)
+        else if (idx >= PositionGauge::SECONDARY_INDEX_BASE &&
+                 idx < PositionGauge::SECONDARY_INDEX_BASE + CELL_COUNT) {
+            int cellIdx = idx - PositionGauge::SECONDARY_INDEX_BASE;
+            g_layout.cell(cellIdx).secondaryValue = val;
         }
     }
 
+    // Frame rate limit
     unsigned long now = millis();
     if (now - g_lastFrameTime < FRAME_TIME_MS) return;
     g_lastFrameTime = now;
 
-    bool xplaneConnected = g_hasData && (now - g_lastReceiveTime < XPLANE_TIMEOUT_MS);
-    if (!xplaneConnected && g_hasData) {
-        g_rawValue = 0.0f;
-        g_smoothedValue = 0.0f;
-        g_hasData = false;
-        g_beeper.stop();
-    }
+    // Update smoothing and connection status for all cells
+    for (int i = 0; i < CELL_COUNT; i++) {
+        CellState& cs = g_layout.cell(i);
 
-    if (g_hasData) {
-        g_smoothedValue += SMOOTH_ALPHA * (g_rawValue - g_smoothedValue);
-    }
-
-    g_beeper.update(g_selector.currentGauge()->getConfig(), g_smoothedValue, g_hasData);
-
-    g_renderer.render(g_selector.currentGauge(), g_rawValue, g_smoothedValue, xplaneConnected);
-    g_selector.draw(g_renderer.getCanvas());
-
-    // Show mute indicator
-    if (g_beeper.isMuted()) {
-        M5Canvas& canvas = g_renderer.getCanvas();
-        unsigned long now = millis();
-        if (now < g_muteFlashEnd) {
-            // Brief large flash on toggle
-            canvas.setTextDatum(middle_center);
-            canvas.setTextSize(1.5);
-            canvas.setTextColor(COLOR_ARC_YELLOW);
-            canvas.drawString("MUTED", CENTER_X, CENTER_Y);
-        } else {
-            // Small persistent indicator
-            canvas.setTextDatum(top_center);
-            canvas.setTextSize(0.8);
-            canvas.setTextColor(COLOR_ARC_YELLOW);
-            canvas.drawString("MUTE", CENTER_X, 4);
+        bool connected = cs.hasData && (now - cs.lastReceiveTime < XPLANE_TIMEOUT_MS);
+        if (!connected && cs.hasData) {
+            cs.rawValue = 0.0f;
+            cs.smoothedValue = 0.0f;
+            cs.hasData = false;
         }
-    } else if (millis() < g_muteFlashEnd) {
-        // Brief flash when unmuting
-        M5Canvas& canvas = g_renderer.getCanvas();
-        canvas.setTextDatum(middle_center);
-        canvas.setTextSize(1.5);
-        canvas.setTextColor(COLOR_ARC_GREEN);
-        canvas.drawString("UNMUTED", CENTER_X, CENTER_Y);
+
+        if (cs.hasData) {
+            cs.smoothedValue += SMOOTH_ALPHA * (cs.rawValue - cs.smoothedValue);
+        }
+
+        // Update position gauge secondary value
+        if (g_layout.needsSecondary(i)) {
+            PositionGauge* pg = static_cast<PositionGauge*>(g_layout.gauge(i));
+            pg->secondaryValue = cs.secondaryValue;
+        }
     }
 
-    g_renderer.push(M5Dial.Display);
+    // Update buzzer
+    g_buzzer.updateAll(g_layout);
+
+    // Render all 6 cells
+    for (int i = 0; i < CELL_COUNT; i++) {
+        CellState& cs = g_layout.cell(i);
+        bool connected = cs.hasData && (now - cs.lastReceiveTime < XPLANE_TIMEOUT_MS);
+        g_renderer.renderCell(i, g_layout.gauge(i), cs.rawValue, cs.smoothedValue, connected);
+    }
+
+    // Draw grid lines
+    g_renderer.drawGrid();
+
+    // Highlight selected cell if picker is open
+    if (g_picker.isOpen()) {
+        g_renderer.drawCellHighlight(g_picker.selectedCell(), COLOR_CELL_SEL);
+    }
+
+    // Draw picker overlay
+    g_picker.draw(g_renderer.getFramebuffer());
+
+    // Draw mute indicator
+    LGFX_Sprite& fb = g_renderer.getFramebuffer();
+    if (g_buzzer.isMuted()) {
+        if (now < g_muteFlashEnd) {
+            fb.setTextDatum(middle_center);
+            fb.setTextSize(3.0);
+            fb.setTextColor(COLOR_ARC_YELLOW);
+            fb.drawString("MUTED", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
+        } else {
+            fb.setTextDatum(top_center);
+            fb.setTextSize(1.0);
+            fb.setTextColor(COLOR_ARC_YELLOW);
+            fb.drawString("MUTE", SCREEN_WIDTH / 2, 4);
+        }
+    } else if (now < g_muteFlashEnd) {
+        fb.setTextDatum(middle_center);
+        fb.setTextSize(3.0);
+        fb.setTextColor(COLOR_ARC_GREEN);
+        fb.drawString("UNMUTED", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
+    }
+
+    // Push entire framebuffer to display
+    g_renderer.push();
 }

@@ -1,11 +1,8 @@
 #include "xplane_discovery.h"
 #include "config.h"
-#include <M5Dial.h>
 #include <cstring>
 
 void XPlaneDiscovery::begin() {
-    // Join multicast group 239.255.1.1 — X-Plane sends BECN to this group
-    // beginMulticast also binds to the port, so broadcast packets are received too
     _udp.beginMulticast(XPLANE_MULTICAST_ADDR, XPLANE_BEACON_PORT);
     _begun = true;
     _found = false;
@@ -31,15 +28,6 @@ bool XPlaneDiscovery::listen() {
                       _rxBuf[0], _rxBuf[1], _rxBuf[2], _rxBuf[3]);
         return false;
     }
-
-    // Beacon data structure (after 5-byte header):
-    //   uint8_t  beacon_major_version (offset 5)
-    //   uint8_t  beacon_minor_version (offset 6)
-    //   int32_t  application_host_id  (offset 7)  — 1 = X-Plane
-    //   int32_t  version_number       (offset 11) — e.g., 120500 for 12.05
-    //   uint32_t role                 (offset 15)
-    //   uint16_t port                 (offset 19) — port X-Plane listens on
-    //   char[]   computer_name        (offset 21) — null-terminated
 
     if (bytesRead < 21) return false;
 
@@ -72,25 +60,27 @@ bool XPlaneDiscovery::listen() {
     return true;
 }
 
-void XPlaneDiscovery::drawStatus(M5GFX& display) {
-    display.fillScreen(COLOR_BG);
-    display.setTextDatum(middle_center);
+void XPlaneDiscovery::drawStatus(LGFX_Sprite& fb) {
+    int cx = SCREEN_WIDTH / 2;
+    int cy = SCREEN_HEIGHT / 2;
 
-    display.setTextColor(COLOR_TITLE);
-    display.setTextSize(1.5);
-    display.drawString("Searching for", CENTER_X, CENTER_Y - 35);
-    display.drawString("X-Plane...", CENTER_X, CENTER_Y - 5);
+    fb.fillSprite(COLOR_BG);
+    fb.setTextDatum(middle_center);
 
-    display.setTextColor(COLOR_DIAL_RIM);
-    display.setTextSize(1.0);
-    display.drawString("Listening on port 49707", CENTER_X, CENTER_Y + 30);
+    fb.setTextColor(COLOR_TITLE);
+    fb.setTextSize(2.0);
+    fb.drawString("Searching for X-Plane...", cx, cy - 30);
+
+    fb.setTextColor(COLOR_DIAL_RIM);
+    fb.setTextSize(1.2);
+    fb.drawString("Listening on port 49707", cx, cy + 20);
 
     // Animated dots
     static int dots = 0;
     dots = (dots + 1) % 4;
     char buf[8] = "   ";
     for (int i = 0; i < dots; i++) buf[i] = '.';
-    display.setTextColor(COLOR_VALUE);
-    display.setTextSize(2.0);
-    display.drawString(buf, CENTER_X, CENTER_Y + 60);
+    fb.setTextColor(COLOR_VALUE);
+    fb.setTextSize(2.5);
+    fb.drawString(buf, cx, cy + 60);
 }
