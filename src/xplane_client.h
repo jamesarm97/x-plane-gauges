@@ -9,6 +9,7 @@ public:
     void subscribe(const char* dataref, int frequency, int index);
     void unsubscribe(const char* dataref, int index);
     bool receive(int& outIndex, float& outValue);
+    void sendCMND(const char* command);
 
 private:
     WiFiUDP _udp;
@@ -16,6 +17,7 @@ private:
     uint16_t _port = 49000;
     bool _begun = false;
     static constexpr size_t RREF_PACKET_SIZE = 413;
+    static constexpr size_t CMND_PACKET_SIZE = 505;
     uint8_t _rxBuf[512];
 
     // Buffered multi-pair parsing

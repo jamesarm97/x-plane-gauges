@@ -70,7 +70,7 @@ public:
                 int ly = cy - (int)(LABEL_RADIUS * cosA);
                 canvas->setTextDatum(middle_center);
                 canvas->setTextColor(COLOR_LABEL);
-                canvas->setTextSize(1.0);
+                canvas->setTextSize(1.2);
 
                 const char* label = nullptr;
                 switch (deg) {
@@ -102,11 +102,11 @@ public:
         // Title and value
         canvas->setTextDatum(middle_center);
         canvas->setTextColor(COLOR_TITLE);
-        canvas->setTextSize(1.0);
+        canvas->setTextSize(1.2);
         canvas->drawString("HDG", cx, cy - 18);
 
         canvas->setTextColor(COLOR_VALUE);
-        canvas->setTextSize(1.3);
+        canvas->setTextSize(1.5);
         char buf[8];
         snprintf(buf, sizeof(buf), "%03d", (int)heading % 360);
         canvas->drawString(buf, cx, cy + 10);

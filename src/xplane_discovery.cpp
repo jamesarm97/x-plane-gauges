@@ -1,5 +1,6 @@
 #include "xplane_discovery.h"
 #include "config.h"
+#include "plane_sprite.h"
 #include <cstring>
 
 void XPlaneDiscovery::begin() {
@@ -75,13 +76,15 @@ void XPlaneDiscovery::drawStatus(LGFX_Sprite& fb) {
     fb.setTextSize(2.0);
     fb.drawString("Listening on port 49707", cx, cy + 20);
 
-    // Animated dots — use left-aligned datum so they grow rightward
-    static int dots = 0;
-    dots = (dots + 1) % 4;
-    const char* dotStr[] = { "", ".", "..", "..." };
-    fb.setTextDatum(middle_left);
-    fb.setTextColor(COLOR_VALUE);
-    fb.setTextSize(3.0);
-    fb.drawString(dotStr[dots], cx - 24, cy + 70);
-    fb.setTextDatum(middle_center);
+    // Animated plane sliding across middle third of screen
+    static constexpr int PLANE_START = SCREEN_WIDTH / 3;
+    static constexpr int PLANE_END = SCREEN_WIDTH * 2 / 3;
+    static int planeX = PLANE_START;
+    planeX += 8;
+    if (planeX > PLANE_END) planeX = PLANE_START - PLANE_IMG_W;
+
+    int planeY = cy + 55;
+    // Draw using pushImage with transparent color
+    fb.pushImage(planeX, planeY, PLANE_IMG_W, PLANE_IMG_H,
+                 PLANE_IMG, PLANE_IMG_TRANS);
 }

@@ -44,7 +44,7 @@ public:
         // Title
         canvas->setTextDatum(top_center);
         canvas->setTextColor(COLOR_TITLE);
-        canvas->setTextSize(1.2);
+        canvas->setTextSize(1.5);
         canvas->drawString("TRIM", cx, 2);
 
         int w = cx * 2;  // cell width
@@ -77,7 +77,7 @@ public:
             // Labels
             canvas->setTextDatum(middle_center);
             canvas->setTextColor(COLOR_LABEL);
-            canvas->setTextSize(0.8);
+            canvas->setTextSize(1.1);
             canvas->drawString("ELEV", barX + barW / 2, barY - 8);
             canvas->drawString("ND", barX + barW / 2, barY + 10);
             canvas->drawString("NU", barX + barW / 2, barY + barH - 10);
@@ -106,7 +106,7 @@ public:
 
             canvas->setTextDatum(middle_center);
             canvas->setTextColor(COLOR_LABEL);
-            canvas->setTextSize(0.8);
+            canvas->setTextSize(1.1);
             canvas->drawString("AIL", barX + barW / 2, barY - 8);
             canvas->drawString("L", barX + 6, barY + barH / 2);
             canvas->drawString("R", barX + barW - 6, barY + barH / 2);
@@ -135,7 +135,7 @@ public:
 
             canvas->setTextDatum(middle_center);
             canvas->setTextColor(COLOR_LABEL);
-            canvas->setTextSize(0.8);
+            canvas->setTextSize(1.1);
             canvas->drawString("RUD", barX + barW / 2, barY - 8);
             canvas->drawString("L", barX + 6, barY + barH / 2);
             canvas->drawString("R", barX + barW - 6, barY + barH / 2);
@@ -148,7 +148,7 @@ public:
 
             canvas->setTextDatum(middle_center);
             canvas->setTextColor(COLOR_VALUE);
-            canvas->setTextSize(1.1);
+            canvas->setTextSize(1.4);
 
             char buf[12];
             snprintf(buf, sizeof(buf), "E %+.0f%%", elevator * 100);

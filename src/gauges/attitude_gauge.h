@@ -69,10 +69,10 @@ public:
         gy[0] = (int)(hcy - hw * sinR);
         gx[1] = (int)(hcx + hw * cosR);
         gy[1] = (int)(hcy + hw * sinR);
-        gx[2] = (int)(hcx + hw * cosR + hw * sinR);
-        gy[2] = (int)(hcy + hw * sinR - hw * cosR);
-        gx[3] = (int)(hcx - hw * cosR + hw * sinR);
-        gy[3] = (int)(hcy - hw * sinR - hw * cosR);
+        gx[2] = (int)(hcx + hw * cosR - hw * sinR);
+        gy[2] = (int)(hcy + hw * sinR + hw * cosR);
+        gx[3] = (int)(hcx - hw * cosR - hw * sinR);
+        gy[3] = (int)(hcy - hw * sinR + hw * cosR);
 
         canvas->fillTriangle(gx[0], gy[0], gx[1], gy[1], gx[2], gy[2], gndColor);
         canvas->fillTriangle(gx[0], gy[0], gx[2], gy[2], gx[3], gy[3], gndColor);
@@ -103,7 +103,7 @@ public:
             if (deg % 10 == 0) {
                 canvas->setTextDatum(middle_center);
                 canvas->setTextColor(COLOR_TICK);
-                canvas->setTextSize(0.8);
+                canvas->setTextSize(1.1);
                 char buf[8];
                 snprintf(buf, sizeof(buf), "%d", abs(deg));
                 canvas->drawString(buf, lx2 + (int)(10 * cosR), ly2 + (int)(10 * sinR));
@@ -155,7 +155,7 @@ public:
         // Numeric readout
         canvas->setTextDatum(middle_center);
         canvas->setTextColor(COLOR_VALUE);
-        canvas->setTextSize(1.0);
+        canvas->setTextSize(1.3);
         char buf[16];
         snprintf(buf, sizeof(buf), "P%+.0f R%+.0f", pitch, roll);
         canvas->drawString(buf, cx, cy + DIAL_RADIUS - 20);

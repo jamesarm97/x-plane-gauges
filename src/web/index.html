@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>X-Plane Gauges</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,system-ui,sans-serif;background:#111;color:#eee;min-height:100vh}
+.tabs{display:flex;background:#1a1a1a;border-bottom:2px solid #07ff}
+.tab{flex:1;padding:14px;text-align:center;cursor:pointer;color:#999;font-size:15px;font-weight:600;transition:all .2s}
+.tab.active{color:#07ff;background:#222;border-bottom:2px solid #07ff}
+.tab:hover{color:#07ff}
+.page{display:none;padding:20px;max-width:800px;margin:0 auto}
+.page.active{display:block}
+h2{color:#07ff;margin-bottom:16px;font-size:20px}
+h3{color:#aaa;margin:16px 0 8px;font-size:14px;text-transform:uppercase;letter-spacing:1px}
+
+/* Dashboard grid */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+.cell{background:#1a1a1a;border:2px solid #333;border-radius:8px;padding:12px;text-align:center}
+.cell label{display:block;color:#999;font-size:12px;margin-bottom:6px}
+.cell select{width:100%;padding:8px;background:#222;color:#eee;border:1px solid #444;border-radius:4px;font-size:14px}
+.cell select:focus{border-color:#07ff;outline:none}
+optgroup{color:#07ff;font-style:normal}
+
+/* Views */
+.views{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+.view-btn{padding:10px 20px;background:#1a1a1a;color:#ccc;border:2px solid #333;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;transition:all .2s}
+.view-btn.active{border-color:#07ff;color:#07ff;background:#0a2a2a}
+.view-btn:hover{border-color:#07ff;color:#07ff}
+
+/* WiFi */
+.wifi-list{list-style:none;margin-bottom:16px}
+.wifi-list li{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#1a1a1a;border:1px solid #333;border-radius:6px;margin-bottom:6px}
+.wifi-list .ssid{font-weight:600}
+.wifi-list .rssi{color:#999;font-size:13px}
+.btn-del{background:#600;color:#faa;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px}
+.btn-del:hover{background:#900}
+.scan-list{list-style:none;margin-bottom:16px}
+.scan-list li{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#1a1a1a;border:1px solid #333;border-radius:6px;margin-bottom:6px;cursor:pointer;transition:border-color .2s}
+.scan-list li:hover{border-color:#07ff}
+.form-row{display:flex;gap:8px;margin-bottom:12px}
+.form-row input{flex:1;padding:10px;background:#222;color:#eee;border:1px solid #444;border-radius:4px;font-size:14px}
+.form-row input:focus{border-color:#07ff;outline:none}
+
+/* System */
+.info-grid{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin-bottom:20px}
+.info-grid dt{color:#999;font-size:13px}
+.info-grid dd{color:#eee;font-size:14px}
+
+/* Buttons */
+.btn{padding:10px 20px;background:#07ff;color:#111;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;transition:opacity .2s}
+.btn:hover{opacity:.85}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-secondary{background:#333;color:#ccc}
+
+/* Controls */
+.ctrl-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:20px}
+.ctrl-cell{display:flex;flex-direction:column;gap:4px}
+.ctrl-btn{background:#1a1a1a;border:2px solid #444;border-radius:8px;padding:12px 4px;text-align:center;cursor:pointer;transition:all .15s;-webkit-tap-highlight-color:transparent;user-select:none;flex:1}
+.ctrl-btn:active{transform:scale(.96)}
+.ctrl-btn .ctrl-label{font-size:12px;font-weight:600;color:#ccc;margin-bottom:8px}
+.ctrl-btn .ctrl-status{font-size:11px;color:#666}
+.ctrl-btn .ctrl-dot{display:inline-block;width:8px;height:8px;border-radius:50%;border:2px solid #666;margin-right:4px;vertical-align:middle}
+.ctrl-btn.on{border-color:#07e0;background:#0a1a0a}
+.ctrl-btn.on .ctrl-label{color:#07e0}
+.ctrl-btn.on .ctrl-status{color:#07e0}
+.ctrl-btn.on .ctrl-dot{background:#07e0;border-color:#07e0}
+.ctrl-assign{width:100%;padding:4px;background:#222;color:#aaa;border:1px solid #333;border-radius:4px;font-size:11px}
+.ctrl-assign:focus{border-color:#07ff;outline:none;color:#eee}
+
+/* OTA */
+.ota-zone{border:2px dashed #333;border-radius:8px;padding:20px;text-align:center;margin-top:16px}
+.ota-zone input[type=file]{margin:10px 0}
+.progress-bar{width:100%;height:24px;background:#222;border-radius:12px;overflow:hidden;margin:10px 0;display:none}
+.progress-fill{height:100%;background:#07ff;width:0;transition:width .3s;border-radius:12px}
+
+/* Toast */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#07ff;color:#111;padding:10px 20px;border-radius:6px;font-weight:600;opacity:0;transition:opacity .3s;pointer-events:none;z-index:100}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<div class="tabs">
+  <div class="tab active" onclick="showTab('dashboard')">Dashboard</div>
+  <div class="tab" onclick="showTab('wifi')">WiFi</div>
+  <div class="tab" onclick="showTab('system')">System</div>
+</div>
+
+<div id="dashboard" class="page active">
+  <h2>Gauge Layout</h2>
+  <div class="views" id="views"></div>
+  <div class="grid" id="grid"></div>
+</div>
+
+<div id="wifi" class="page">
+  <h2>WiFi Networks</h2>
+  <h3>Saved Networks</h3>
+  <ul class="wifi-list" id="saved-wifi"></ul>
+  <h3>Available Networks</h3>
+  <button class="btn btn-secondary" onclick="scanWifi()" id="scan-btn">Scan</button>
+  <ul class="scan-list" id="scan-results" style="margin-top:10px"></ul>
+  <h3>Add Network</h3>
+  <div class="form-row">
+    <input type="text" id="new-ssid" placeholder="SSID">
+    <input type="password" id="new-pass" placeholder="Password">
+    <button class="btn" onclick="addWifi()">Save & Restart</button>
+  </div>
+</div>
+
+<div id="system" class="page">
+  <h2>System Info</h2>
+  <dl class="info-grid" id="sys-info"></dl>
+  <h3>Firmware Update</h3>
+  <div class="ota-zone">
+    <p>Select a .bin firmware file to upload</p>
+    <input type="file" id="ota-file" accept=".bin">
+    <br>
+    <button class="btn" onclick="uploadOTA()" id="ota-btn">Upload & Install</button>
+    <div class="progress-bar" id="ota-progress">
+      <div class="progress-fill" id="ota-fill"></div>
+    </div>
+    <p id="ota-status"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let gaugeData=[], currentView=-1, controlRegistry=[];
+
+function showTab(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelector(`.tab[onclick*="${id}"]`).classList.add('active');
+  if(id==='dashboard')loadDashboard();
+  if(id==='wifi')loadWifi();
+  if(id==='system')loadStatus();
+}
+
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2000);
+}
+
+async function api(path,opts){
+  const r=await fetch(path,opts);
+  return r.json();
+}
+
+// ── Dashboard ───────────────────────────────────────────────────
+async function loadDashboard(){
+  const[gauges,layout,views]=await Promise.all([
+    api('/api/gauges'),api('/api/layout'),api('/api/views')
+  ]);
+  gaugeData=gauges;currentView=layout.view;
+  renderViews(views,layout.view);
+  if(layout.view===4){
+    const[ctrls,registry]=await Promise.all([
+      api('/api/controls'),api('/api/controls/registry')
+    ]);
+    controlRegistry=registry;
+    renderControls(ctrls,registry);
+  }else{
+    renderGrid(gauges,layout.cells);
+  }
+}
+
+function renderViews(views,active){
+  const c=document.getElementById('views');c.innerHTML='';
+  views.forEach(v=>{
+    const b=document.createElement('button');
+    b.className='view-btn'+(v.index===active?' active':'');
+    b.textContent=v.name;
+    b.onclick=async()=>{
+      await api('/api/views',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({view:v.index})});
+      toast('View: '+v.name);
+      setTimeout(loadDashboard,300);
+    };
+    c.appendChild(b);
+  });
+}
+
+function renderGrid(gauges,cells){
+  const g=document.getElementById('grid');g.innerHTML='';g.className='grid';
+  cells.forEach((cell,i)=>{
+    const d=document.createElement('div');d.className='cell';
+    const lbl=document.createElement('label');lbl.textContent='Cell '+(i+1);
+    const sel=document.createElement('select');
+    gauges.forEach(cat=>{
+      const og=document.createElement('optgroup');og.label=cat.category;
+      cat.gauges.forEach(ga=>{
+        const o=document.createElement('option');
+        o.value=ga.index;o.textContent=ga.name;
+        if(ga.index===cell.gauge_index)o.selected=true;
+        og.appendChild(o);
+      });
+      sel.appendChild(og);
+    });
+    sel.onchange=async()=>{
+      await api('/api/layout',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({cell:i,gauge_index:parseInt(sel.value)})});
+      toast('Cell '+(i+1)+' updated');
+    };
+    d.appendChild(lbl);d.appendChild(sel);g.appendChild(d);
+  });
+}
+
+function renderControls(ctrls,registry){
+  const g=document.getElementById('grid');
+  g.innerHTML='';g.className='ctrl-grid';
+  // Group registry by category for optgroups
+  const cats={};
+  registry.forEach(r=>{
+    if(!cats[r.category])cats[r.category]=[];
+    cats[r.category].push(r);
+  });
+  ctrls.forEach((c,i)=>{
+    const cell=document.createElement('div');
+    cell.className='ctrl-cell';
+    // Toggle button
+    const btn=document.createElement('div');
+    btn.className='ctrl-btn'+(c.on?' on':'');
+    btn.innerHTML=`<div class="ctrl-label">${c.label}</div><div class="ctrl-status"><span class="ctrl-dot"></span>${c.on?'ON':'OFF'}</div>`;
+    btn.onclick=async()=>{
+      await api('/api/controls',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({slot:i})});
+      c.on=!c.on;
+      btn.className='ctrl-btn'+(c.on?' on':'');
+      btn.querySelector('.ctrl-status').innerHTML=`<span class="ctrl-dot"></span>${c.on?'ON':'OFF'}`;
+    };
+    cell.appendChild(btn);
+    // Assignment dropdown
+    const sel=document.createElement('select');
+    sel.className='ctrl-assign';
+    Object.keys(cats).forEach(cat=>{
+      const og=document.createElement('optgroup');og.label=cat;
+      cats[cat].forEach(r=>{
+        const o=document.createElement('option');
+        o.value=r.index;o.textContent=r.label;
+        if(r.index===c.control)o.selected=true;
+        og.appendChild(o);
+      });
+      sel.appendChild(og);
+    });
+    sel.onchange=async()=>{
+      const ci=parseInt(sel.value);
+      await api('/api/controls/assign',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({slot:i,control:ci})});
+      toast('Slot '+(i+1)+': '+registry[ci].label);
+      setTimeout(loadDashboard,300);
+    };
+    cell.appendChild(sel);
+    g.appendChild(cell);
+  });
+}
+
+// ── WiFi ────────────────────────────────────────────────────────
+async function loadWifi(){
+  const saved=await api('/api/wifi');
+  const ul=document.getElementById('saved-wifi');ul.innerHTML='';
+  if(saved.length===0){ul.innerHTML='<li style="color:#666">No saved networks</li>';return}
+  saved.forEach(ssid=>{
+    const li=document.createElement('li');
+    li.innerHTML=`<span class="ssid">${ssid}</span><button class="btn-del" onclick="delWifi('${ssid}')">Remove</button>`;
+    ul.appendChild(li);
+  });
+}
+
+async function scanWifi(){
+  const btn=document.getElementById('scan-btn');
+  btn.disabled=true;btn.textContent='Scanning...';
+  const ul=document.getElementById('scan-results');
+  ul.innerHTML='<li style="color:#999">Scanning nearby networks (~5s)...</li>';
+  await api('/api/wifi/scan');
+  // Poll until scan completes (runs on device main loop)
+  for(let i=0;i<30;i++){
+    await new Promise(r=>setTimeout(r,1000));
+    try{
+      const r=await api('/api/wifi/scan/results');
+      if(r.scanning)continue;
+      // Got results — r is an array of {ssid, rssi, open}
+      btn.disabled=false;btn.textContent='Scan';
+      ul.innerHTML='';
+      if(!Array.isArray(r)||r.length===0){
+        ul.innerHTML='<li style="color:#666">No networks found</li>';
+        return;
+      }
+      r.forEach(net=>{
+        const li=document.createElement('li');
+        li.innerHTML=`<span class="ssid">${net.ssid}</span><span class="rssi">${net.rssi} dBm ${net.open?'(Open)':''}</span>`;
+        li.onclick=()=>{
+          document.getElementById('new-ssid').value=net.ssid;
+          document.getElementById('new-pass').focus();
+        };
+        ul.appendChild(li);
+      });
+      return;
+    }catch(e){/* retry */}
+  }
+  btn.disabled=false;btn.textContent='Scan';
+  ul.innerHTML='<li style="color:#f66">Scan timed out — try again</li>';
+}
+
+async function addWifi(){
+  const ssid=document.getElementById('new-ssid').value.trim();
+  const pass=document.getElementById('new-pass').value;
+  if(!ssid){toast('Enter SSID');return}
+  const r=await api('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ssid,password:pass})});
+  if(r.ok){toast('Saved! Restarting...')}
+  else{toast(r.error||'Error')}
+}
+
+async function delWifi(ssid){
+  await api('/api/wifi',{method:'DELETE',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ssid})});
+  toast('Removed: '+ssid);
+  loadWifi();
+}
+
+// ── System ──────────────────────────────────────────────────────
+async function loadStatus(){
+  const s=await api('/api/status');
+  const dl=document.getElementById('sys-info');
+  dl.innerHTML=`
+    <dt>Version</dt><dd>${s.version}</dd>
+    <dt>IP Address</dt><dd>${s.ip}</dd>
+    <dt>Mode</dt><dd>${s.ap_mode?'Access Point':'Station'}</dd>
+    <dt>Uptime</dt><dd>${formatUptime(s.uptime)}</dd>
+    <dt>Free Heap</dt><dd>${(s.heap/1024).toFixed(0)} KB</dd>
+    <dt>Free PSRAM</dt><dd>${(s.psram/1024).toFixed(0)} KB</dd>
+  `;
+}
+
+function formatUptime(s){
+  const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
+  return `${h}h ${m}m ${sec}s`;
+}
+
+async function uploadOTA(){
+  const file=document.getElementById('ota-file').files[0];
+  if(!file){toast('Select a file');return}
+  const btn=document.getElementById('ota-btn');
+  btn.disabled=true;btn.textContent='Uploading...';
+  const bar=document.getElementById('ota-progress');
+  const fill=document.getElementById('ota-fill');
+  const status=document.getElementById('ota-status');
+  bar.style.display='block';
+
+  const xhr=new XMLHttpRequest();
+  xhr.open('POST','/ota');
+  xhr.upload.onprogress=e=>{
+    if(e.lengthComputable){
+      const pct=Math.round(e.loaded/e.total*100);
+      fill.style.width=pct+'%';
+      status.textContent='Uploading: '+pct+'%';
+    }
+  };
+  xhr.onload=()=>{
+    if(xhr.status===200){
+      status.textContent='Update complete! Restarting...';
+      fill.style.width='100%';
+      setTimeout(()=>location.reload(),5000);
+    }else{
+      status.textContent='Upload failed: '+xhr.responseText;
+      btn.disabled=false;btn.textContent='Upload & Install';
+    }
+  };
+  xhr.onerror=()=>{
+    status.textContent='Connection lost (device may be restarting)';
+    setTimeout(()=>location.reload(),5000);
+  };
+
+  const fd=new FormData();
+  fd.append('firmware',file);
+  xhr.send(fd);
+}
+
+// Initial load
+loadDashboard();
+</script>
+</body>
+</html>

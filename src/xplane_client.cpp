@@ -42,6 +42,24 @@ void XPlaneClient::sendRREF(const char* dataref, int frequency, int index) {
     _udp.endPacket();
 }
 
+void XPlaneClient::sendCMND(const char* command) {
+    if (!_begun) return;
+
+    // CMND packet: "CMND\0" (5 bytes) + 500-byte command string = 505 bytes
+    uint8_t packet[CMND_PACKET_SIZE];
+    memset(packet, 0, CMND_PACKET_SIZE);
+
+    memcpy(packet, "CMND\0", 5);
+
+    size_t len = strlen(command);
+    if (len > 499) len = 499;
+    memcpy(packet + 5, command, len);
+
+    _udp.beginPacket(_ip, _port);
+    _udp.write(packet, CMND_PACKET_SIZE);
+    _udp.endPacket();
+}
+
 bool XPlaneClient::receive(int& outIndex, float& outValue) {
     // If we have buffered pairs from a previous packet, return the next one
     if (_rxOffset > 0 && _rxOffset + 8 <= _rxLen) {

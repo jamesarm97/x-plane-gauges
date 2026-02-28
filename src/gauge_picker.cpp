@@ -47,26 +47,9 @@ bool GaugePicker::handleTouch(int x, int y, bool pressed) {
         _touchStartY = y;
         _lastTouchY = y;
         _isDragging = false;
-
-        // Immediate selection on press (like view picker)
-        if (x >= PANEL_X && x < PANEL_X + PANEL_W &&
-            y >= PANEL_Y && y < PANEL_Y + PANEL_H) {
-            if (y >= PANEL_Y + HEADER_H) {
-                int row = hitTestPickerRow(x, y);
-                if (row >= 0 && row < GAUGE_COUNT) {
-                    _layout->setGauge(_selectedCell, row);
-                    close();
-                    return true;    // Gauge changed
-                }
-            }
-        } else {
-            // Tap outside popup — close
-            close();
-            return false;
-        }
     }
 
-    if (pressed && _wasTouched) {
+    if (pressed) {
         int dy = y - _lastTouchY;
         // Start dragging if moved beyond threshold
         if (!_isDragging && abs(y - _touchStartY) > DRAG_THRESHOLD) {
@@ -81,6 +64,24 @@ bool GaugePicker::handleTouch(int x, int y, bool pressed) {
     }
 
     if (justReleased) {
+        if (!_isDragging) {
+            // Tap (not drag) — select gauge or close
+            if (x >= PANEL_X && x < PANEL_X + PANEL_W &&
+                y >= PANEL_Y && y < PANEL_Y + PANEL_H) {
+                if (y >= PANEL_Y + HEADER_H) {
+                    int row = hitTestPickerRow(x, y);
+                    if (row >= 0 && row < GAUGE_COUNT) {
+                        _layout->setGauge(_selectedCell, row);
+                        close();
+                        return true;    // Gauge changed
+                    }
+                }
+            } else {
+                // Tap outside popup — close
+                close();
+                return false;
+            }
+        }
         _isDragging = false;
     }
 

@@ -1,8 +1,11 @@
 #include <Arduino.h>
+#include <WiFi.h>
+#include <ArduinoJson.h>
 #include "display_driver.h"
 #include "config.h"
 #include "wifi_manager.h"
 #include "wifi_credentials.h"
+#include "wifi_credential_store.h"
 #include "xplane_discovery.h"
 #include "xplane_client.h"
 #include "gauge_renderer.h"
@@ -10,6 +13,8 @@
 #include "gauge_picker.h"
 #include "buzzer_driver.h"
 #include "view_manager.h"
+#include "web_server.h"
+#include "controls_page.h"
 #include "gauges/gauge_registry.h"
 
 // ── Application State ───────────────────────────────────────────────
@@ -17,6 +22,8 @@ enum AppState {
     STATE_WIFI_CONNECTING,
     STATE_DISCOVERING,
     STATE_RUNNING,
+    STATE_AP_MODE,
+    STATE_OTA_UPDATING,
 };
 
 static AppState          g_state = STATE_WIFI_CONNECTING;
@@ -24,10 +31,13 @@ static WiFiManager       g_wifi;
 static XPlaneDiscovery   g_discovery;
 static XPlaneClient      g_xplane;
 static GaugeRenderer     g_renderer;
-static DashboardLayout   g_layout;
+DashboardLayout          g_layout;       // non-static: accessed by web_server.cpp
 static GaugePicker       g_picker;
 static BuzzerDriver      g_buzzer;
-static ViewManager       g_viewManager;
+ViewManager              g_viewManager;  // non-static: accessed by web_server.cpp
+WiFiCredentialStore      g_credStore;    // non-static: accessed by web_server.cpp
+static WebServerManager  g_webServer;
+ControlsPage             g_controlsPage;  // non-static: accessed by web_server.cpp
 
 // ── Discovered X-Plane address ──────────────────────────────────────
 static char g_xplaneIP[20] = {0};
@@ -69,11 +79,15 @@ static constexpr unsigned long VIEW_PICKER_TIMEOUT_MS = 5000;
 void handleWiFiConnecting();
 void handleDiscovering();
 void handleRunning();
+void handleAPMode();
+void handleOTAUpdating();
 void startRunning();
+void startAPMode();
 void subscribeAll();
 void subscribeCell(int cellIndex);
 void unsubscribeCell(int cellIndex);
 void handleTouchInput();
+void processWebCommands();
 void switchView(int viewIndex);
 void drawViewPicker(LGFX_Sprite& fb);
 void drawViewOverlay(LGFX_Sprite& fb);
@@ -117,7 +131,18 @@ void setup() {
     // Initialize renderer (creates PSRAM framebuffer)
     g_renderer.begin(&g_display);
 
+    // Load dashboard layout from NVS (so web UI works before X-Plane connects)
+    g_layout.begin();
+
+    // Load stored WiFi credentials from NVS
+    g_credStore.load();
+    Serial.printf("[Boot] Loaded %d WiFi networks from NVS\n", g_credStore.count());
+
+    // Start WiFi with hardcoded + NVS credentials
     g_wifi.begin(WIFI_NETWORKS, WIFI_NETWORK_COUNT);
+    for (int i = 0; i < g_credStore.count(); i++) {
+        g_wifi.addNetwork(g_credStore.network(i).ssid, g_credStore.network(i).password);
+    }
     g_state = STATE_WIFI_CONNECTING;
 }
 
@@ -132,6 +157,12 @@ void loop() {
         case STATE_RUNNING:
             handleRunning();
             break;
+        case STATE_AP_MODE:
+            handleAPMode();
+            break;
+        case STATE_OTA_UPDATING:
+            handleOTAUpdating();
+            break;
     }
 }
 
@@ -140,12 +171,30 @@ void handleWiFiConnecting() {
 
     LGFX_Sprite& fb = g_renderer.getFramebuffer();
     g_wifi.drawStatus(fb);
+
+    // Show AP fallback countdown
+    unsigned long elapsed = millis() - g_wifi.connectStartTime();
+    if (elapsed < WIFI_CONNECT_TIMEOUT_MS) {
+        int secsLeft = (WIFI_CONNECT_TIMEOUT_MS - elapsed) / 1000;
+        fb.setTextDatum(bottom_center);
+        fb.setTextColor(COLOR_DIAL_RIM);
+        fb.setTextSize(1.8);
+        char buf[40];
+        snprintf(buf, sizeof(buf), "AP fallback in %ds", secsLeft);
+        fb.drawString(buf, SCREEN_WIDTH / 2, SCREEN_HEIGHT - 20);
+    }
+
     fb.pushSprite(&g_display, 0, 0);
 
     if (g_wifi.isConnected()) {
+        // Start web server immediately so it's accessible during discovery
+        g_webServer.begin(false);
+        Serial.printf("[WiFi] Connected. Web UI at http://%s/\n", WiFi.localIP().toString().c_str());
         delay(500);
         g_discovery.begin();
         g_state = STATE_DISCOVERING;
+    } else if (elapsed >= WIFI_CONNECT_TIMEOUT_MS) {
+        startAPMode();
     } else {
         delay(200);
     }
@@ -156,6 +205,10 @@ void handleDiscovering() {
         g_state = STATE_WIFI_CONNECTING;
         return;
     }
+
+    // Process web commands during discovery (gauge config, WiFi, etc.)
+    processWebCommands();
+
 
     if (g_discovery.listen()) {
         // Found X-Plane!
@@ -187,6 +240,15 @@ void handleDiscovering() {
         // Show searching animation
         LGFX_Sprite& fb = g_renderer.getFramebuffer();
         g_discovery.drawStatus(fb);
+
+        // Show device IP for web access
+        fb.setTextDatum(bottom_center);
+        fb.setTextColor(COLOR_DIAL_RIM);
+        fb.setTextSize(1.8);
+        char ipBuf[48];
+        snprintf(ipBuf, sizeof(ipBuf), "Web UI: http://%s", WiFi.localIP().toString().c_str());
+        fb.drawString(ipBuf, SCREEN_WIDTH / 2, SCREEN_HEIGHT - 20);
+
         fb.pushSprite(&g_display, 0, 0);
         delay(200);
     }
@@ -197,6 +259,7 @@ void startRunning() {
     g_layout.begin();
     g_picker.begin(&g_layout);
     g_buzzer.begin();
+    g_controlsPage.begin(&g_xplane);
 
     subscribeAll();
 
@@ -244,12 +307,216 @@ void resubscribeAll() {
     }
 }
 
+// ── AP Mode ─────────────────────────────────────────────────────────
+
+void startAPMode() {
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(AP_SSID, AP_PASSWORD);
+    delay(100);
+
+    Serial.printf("[AP] Started: %s @ %s\n", AP_SSID, WiFi.softAPIP().toString().c_str());
+
+    g_webServer.begin(true);
+    g_state = STATE_AP_MODE;
+}
+
+void handleAPMode() {
+    g_webServer.processDNS();
+
+    // Check for OTA
+    if (g_webServer.otaInProgress()) {
+        g_state = STATE_OTA_UPDATING;
+        return;
+    }
+
+    // Process web commands (WiFi save triggers restart via CMD_RESTART)
+    processWebCommands();
+
+
+    // Render AP info screen
+    unsigned long now = millis();
+    static unsigned long lastAPFrame = 0;
+    if (now - lastAPFrame < 100) return;  // 10fps for status screen
+    lastAPFrame = now;
+
+    LGFX_Sprite& fb = g_renderer.getFramebuffer();
+    fb.fillSprite(COLOR_BG);
+    int cx = SCREEN_WIDTH / 2;
+
+    fb.setTextDatum(middle_center);
+    fb.setTextColor(COLOR_TITLE);
+    fb.setTextSize(3.5);
+    fb.drawString("WiFi Setup Mode", cx, 60);
+
+    fb.setTextColor(COLOR_LABEL);
+    fb.setTextSize(2.5);
+    fb.drawString("Connect to WiFi network:", cx, 140);
+
+    fb.setTextColor(COLOR_ARC_GREEN);
+    fb.setTextSize(3.0);
+    fb.drawString(AP_SSID, cx, 190);
+
+    fb.setTextColor(COLOR_LABEL);
+    fb.setTextSize(2.0);
+    fb.drawString("Password: " AP_PASSWORD, cx, 240);
+
+    fb.setTextColor(COLOR_DIAL_RIM);
+    fb.setTextSize(2.0);
+    fb.drawString("Then open browser to:", cx, 310);
+
+    fb.setTextColor(COLOR_VALUE);
+    fb.setTextSize(3.0);
+    fb.drawString("http://192.168.4.1", cx, 360);
+
+    // Connected clients count
+    fb.setTextColor(COLOR_DIAL_RIM);
+    fb.setTextSize(1.8);
+    char buf[40];
+    snprintf(buf, sizeof(buf), "Clients: %d", WiFi.softAPgetStationNum());
+    fb.drawString(buf, cx, 430);
+
+    fb.pushSprite(&g_display, 0, 0);
+}
+
+// ── OTA Updating ────────────────────────────────────────────────────
+
+void handleOTAUpdating() {
+    // Render OTA progress
+    unsigned long now = millis();
+    static unsigned long lastOTAFrame = 0;
+    if (now - lastOTAFrame < 50) return;  // 20fps for progress bar
+    lastOTAFrame = now;
+
+    LGFX_Sprite& fb = g_renderer.getFramebuffer();
+    fb.fillSprite(COLOR_BG);
+    int cx = SCREEN_WIDTH / 2;
+    int cy = SCREEN_HEIGHT / 2;
+
+    fb.setTextDatum(middle_center);
+    fb.setTextColor(COLOR_ARC_YELLOW);
+    fb.setTextSize(3.5);
+    fb.drawString("Updating Firmware", cx, cy - 80);
+
+    fb.setTextColor(COLOR_LABEL);
+    fb.setTextSize(2.5);
+    fb.drawString("Do not disconnect!", cx, cy - 30);
+
+    // Progress bar
+    int barW = 500;
+    int barH = 40;
+    int bx = (SCREEN_WIDTH - barW) / 2;
+    int by = cy + 20;
+    int progress = g_webServer.otaProgress();
+
+    fb.drawRoundRect(bx, by, barW, barH, 6, COLOR_DIAL_RIM);
+    int fillW = (barW - 4) * progress / 100;
+    if (fillW > 0) {
+        fb.fillRoundRect(bx + 2, by + 2, fillW, barH - 4, 4, COLOR_ARC_GREEN);
+    }
+
+    // Percentage text
+    char buf[10];
+    snprintf(buf, sizeof(buf), "%d%%", progress);
+    fb.setTextColor(COLOR_LABEL);
+    fb.setTextSize(2.5);
+    fb.drawString(buf, cx, by + barH + 30);
+
+    fb.pushSprite(&g_display, 0, 0);
+
+    // Restart after OTA complete
+    if (g_webServer.otaComplete()) {
+        fb.fillSprite(COLOR_BG);
+        fb.setTextDatum(middle_center);
+        fb.setTextColor(COLOR_ARC_GREEN);
+        fb.setTextSize(3.5);
+        fb.drawString("Update Complete!", cx, cy - 20);
+        fb.setTextColor(COLOR_LABEL);
+        fb.setTextSize(2.5);
+        fb.drawString("Restarting...", cx, cy + 30);
+        fb.pushSprite(&g_display, 0, 0);
+        delay(2000);
+        ESP.restart();
+    }
+}
+
+// ── Process web commands ────────────────────────────────────────────
+
+void processWebCommands() {
+    WebCommand cmd;
+    while (g_webServer.dequeueCommand(cmd)) {
+        switch (cmd.type) {
+            case CMD_SET_GAUGE:
+                g_layout.setGauge(cmd.cell, cmd.gaugeIndex);
+                if (g_viewManager.currentView() != VIEW_CUSTOM) {
+                    g_viewManager.setView(VIEW_CUSTOM);
+                }
+                if (g_state == STATE_RUNNING) {
+                    resubscribeAll();
+                }
+                Serial.printf("[Web] Set cell %d to gauge %d\n", cmd.cell, cmd.gaugeIndex);
+                break;
+            case CMD_SWITCH_VIEW:
+                switchView(cmd.viewIndex);
+                g_viewManager.setView(cmd.viewIndex);
+                Serial.printf("[Web] Switch to view %d\n", cmd.viewIndex);
+                break;
+            case CMD_RESTART:
+                Serial.println("[Web] Restart requested");
+                delay(500);
+                ESP.restart();
+                break;
+            case CMD_TOGGLE_CONTROL:
+                g_controlsPage.toggle(cmd.controlIndex);
+                if (g_viewManager.currentView() != VIEW_CONTROLS) {
+                    g_viewManager.setView(VIEW_CONTROLS);
+                    switchView(VIEW_CONTROLS);
+                }
+                Serial.printf("[Web] Toggle control slot %d\n", cmd.controlIndex);
+                break;
+            case CMD_SET_CONTROL:
+                g_controlsPage.setSlot(cmd.cell, cmd.controlIndex);
+                Serial.printf("[Web] Set slot %d to control %d\n", cmd.cell, cmd.controlIndex);
+                break;
+            case CMD_WIFI_SCAN: {
+                Serial.println("[Web] Running WiFi scan on Core 1...");
+                int n = WiFi.scanNetworks(false, false, false, 300);
+                Serial.printf("[Web] Scan found %d networks\n", n);
+                JsonDocument doc;
+                JsonArray arr = doc.to<JsonArray>();
+                for (int i = 0; i < n; i++) {
+                    String ssid = WiFi.SSID(i);
+                    if (ssid.length() == 0) continue;
+                    JsonObject net = arr.add<JsonObject>();
+                    net["ssid"] = ssid;
+                    net["rssi"] = WiFi.RSSI(i);
+                    net["open"] = (WiFi.encryptionType(i) == WIFI_AUTH_OPEN);
+                }
+                WiFi.scanDelete();
+                String json;
+                serializeJson(doc, json);
+                Serial.printf("[Web] Scan results: %s\n", json.c_str());
+                g_webServer.setScanResults(json);
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    // Check for OTA start
+    if (g_webServer.otaInProgress() && g_state != STATE_OTA_UPDATING) {
+        g_state = STATE_OTA_UPDATING;
+    }
+}
+
 void handleTouchInput() {
     // Read up to 2 touch points for multi-finger gesture detection
     lgfx::touch_point_t tp[2];
     int touchCount = g_display.getTouch(tp, 2);
     bool pressed = (touchCount > 0);
     bool twoFingers = (touchCount >= 2);
+
 
     // Keep last valid touch position for use on release
     static int lastTouchX = 0, lastTouchY = 0;
@@ -349,6 +616,14 @@ void handleTouchInput() {
     // Skip single-finger processing if two fingers are active or suppressed
     if (g_twoFingerActive || g_suppressNextTap) return;
 
+    // ── Controls page touch routing ─────────────────────────────────
+    if (g_viewManager.currentView() == VIEW_CONTROLS) {
+        bool justPressed = (pressed && !g_touchActive);
+        g_controlsPage.handleTouch(tp[0].x, tp[0].y, pressed, justPressed);
+        g_touchActive = pressed;
+        return;
+    }
+
     // ── Single-finger touch handling (existing logic) ───────────────
     if (pressed && !g_touchActive) {
         // Touch start
@@ -397,6 +672,10 @@ void handleTouchInput() {
 }
 
 void switchView(int viewIndex) {
+    if (viewIndex == VIEW_CONTROLS) {
+        // Controls page — no gauge layout or datarefs needed
+        return;
+    }
     if (viewIndex == VIEW_CUSTOM) {
         // Reload user's saved layout from NVS
         g_layout.begin();
@@ -413,7 +692,9 @@ void switchView(int viewIndex) {
             g_layout.cell(i).hasData = false;
         }
     }
-    resubscribeAll();
+    if (g_state == STATE_RUNNING) {
+        resubscribeAll();
+    }
 }
 
 void drawViewPicker(LGFX_Sprite& fb) {
@@ -480,6 +761,10 @@ void handleRunning() {
         g_state = STATE_WIFI_CONNECTING;
         return;
     }
+
+    // Process web commands before touch/render
+    processWebCommands();
+
 
     // Process touch input
     handleTouchInput();
@@ -550,26 +835,32 @@ void handleRunning() {
     // Update buzzer
     g_buzzer.updateAll(g_layout);
 
-    // Render all 6 cells
-    for (int i = 0; i < CELL_COUNT; i++) {
-        CellState& cs = g_layout.cell(i);
-        bool connected = cs.hasData && (now - cs.lastReceiveTime < XPLANE_TIMEOUT_MS);
-        g_renderer.renderCell(i, g_layout.gauge(i), cs.values, cs.smoothedValues, cs.valueCount, connected);
-    }
-
-    // Draw grid lines
-    g_renderer.drawGrid();
-
-    // Highlight selected cell if picker is open
-    if (g_picker.isOpen()) {
-        g_renderer.drawCellHighlight(g_picker.selectedCell(), COLOR_CELL_SEL);
-    }
-
-    // Draw picker overlay
-    g_picker.draw(g_renderer.getFramebuffer());
-
-    // Draw mute indicator
+    // Get framebuffer reference
     LGFX_Sprite& fb = g_renderer.getFramebuffer();
+
+    if (g_viewManager.currentView() == VIEW_CONTROLS) {
+        // Controls page — full-screen button grid
+        fb.fillSprite(COLOR_BG);
+        g_controlsPage.draw(fb);
+    } else {
+        // Render all 6 cells
+        for (int i = 0; i < CELL_COUNT; i++) {
+            CellState& cs = g_layout.cell(i);
+            bool connected = cs.hasData && (now - cs.lastReceiveTime < XPLANE_TIMEOUT_MS);
+            g_renderer.renderCell(i, g_layout.gauge(i), cs.values, cs.smoothedValues, cs.valueCount, connected);
+        }
+
+        // Draw grid lines
+        g_renderer.drawGrid();
+
+        // Highlight selected cell if picker is open
+        if (g_picker.isOpen()) {
+            g_renderer.drawCellHighlight(g_picker.selectedCell(), COLOR_CELL_SEL);
+        }
+
+        // Draw picker overlay
+        g_picker.draw(fb);
+    }
     if (g_buzzer.isMuted()) {
         if (now < g_muteFlashEnd) {
             fb.setTextDatum(middle_center);

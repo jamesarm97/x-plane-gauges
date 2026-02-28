@@ -8,8 +8,9 @@ struct ViewDef {
     int gauges[CELL_COUNT];  // Gauge indices for each cell
 };
 
-static constexpr int VIEW_COUNT = 4;
-static constexpr int VIEW_CUSTOM = 3;  // Index of CUSTOM view
+static constexpr int VIEW_COUNT = 5;
+static constexpr int VIEW_CUSTOM = 3;     // Index of CUSTOM view
+static constexpr int VIEW_CONTROLS = 4;   // Index of CONTROLS view
 
 static const ViewDef g_views[VIEW_COUNT] = {
     // FLIGHT: airspeed(0), attitude(21), altitude(1), HSI(22), heading(3), VSI(2)
@@ -20,6 +21,8 @@ static const ViewDef g_views[VIEW_COUNT] = {
     { "SYSTEMS", { 23, 28, 26, 27, 25, 17 } },
     // CUSTOM: loaded from NVS (user's saved layout — placeholder, not applied directly)
     { "CUSTOM",  { 0, 3, 1, 9, 4, 2 } },
+    // CONTROLS: pre-flight controls page (rendered by ControlsPage, gauges unused)
+    { "CONTROLS", { 0, 0, 0, 0, 0, 0 } },
 };
 
 class ViewManager {

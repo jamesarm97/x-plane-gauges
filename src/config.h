@@ -1,7 +1,7 @@
 #pragma once
 
 // ── Version ────────────────────────────────────────────────────────
-#define FW_VERSION "2.0.1"
+#define FW_VERSION "2.0.2"
 
 // ── X-Plane Configuration ───────────────────────────────────────────
 #define XPLANE_PORT   49000             // X-Plane UDP port (default, overridden by beacon)
@@ -51,6 +51,12 @@
 #define WARNING_BEEP_OFF_MS   300   // Silence between beeps
 #define MUTE_HOLD_MS          1000  // Long-press to toggle mute
 
+// ── WiFi AP Fallback ──────────────────────────────────────────────────
+#define AP_SSID             "XPlane-Gauges"
+#define AP_PASSWORD         "xplane123"
+#define WIFI_CONNECT_TIMEOUT_MS  30000   // 30s before AP fallback
+#define WIFI_NVS_MAX        5            // Max stored WiFi networks
+
 // ── Colors (RGB565) ─────────────────────────────────────────────────
 #define COLOR_BG          0x0000  // Black
 #define COLOR_DIAL_BG     0x18E3  // Dark gray
@@ -70,3 +76,9 @@
 #define COLOR_PICKER_BG   0x10A2  // Dark panel background
 #define COLOR_PICKER_FG   0xFFFF  // Picker text
 #define COLOR_PICKER_HL   0x07FF  // Picker highlight
+
+// ── Controls Page (RGB565) ─────────────────────────────────────────
+#define COLOR_CTRL_ON     0x07E0  // Green
+#define COLOR_CTRL_OFF    0x4208  // Dark gray
+#define COLOR_CTRL_BG     0x18E3  // Button background
+#define COLOR_CTRL_PRESS  0x2945  // Pressed feedback

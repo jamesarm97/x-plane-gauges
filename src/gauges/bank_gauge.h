@@ -62,10 +62,10 @@ public:
         gy[0] = cy + (int)(-hw * sinR);
         gx[1] = cx + (int)(hw * cosR);
         gy[1] = cy + (int)(hw * sinR);
-        gx[2] = cx + (int)(hw * cosR + hw * sinR);
-        gy[2] = cy + (int)(hw * sinR - hw * cosR);
-        gx[3] = cx + (int)(-hw * cosR + hw * sinR);
-        gy[3] = cy + (int)(-hw * sinR - hw * cosR);
+        gx[2] = cx + (int)(hw * cosR - hw * sinR);
+        gy[2] = cy + (int)(hw * sinR + hw * cosR);
+        gx[3] = cx + (int)(-hw * cosR - hw * sinR);
+        gy[3] = cy + (int)(-hw * sinR + hw * cosR);
 
         canvas->fillTriangle(gx[0], gy[0], gx[1], gy[1], gx[2], gy[2], gndColor);
         canvas->fillTriangle(gx[0], gy[0], gx[2], gy[2], gx[3], gy[3], gndColor);

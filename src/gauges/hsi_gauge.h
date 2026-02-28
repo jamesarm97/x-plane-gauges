@@ -71,7 +71,7 @@ public:
                 int ly = cy - (int)(LABEL_RADIUS * cosA);
                 canvas->setTextDatum(middle_center);
                 canvas->setTextColor(COLOR_LABEL);
-                canvas->setTextSize(0.8);
+                canvas->setTextSize(1.2);
                 char lbl[4];
                 snprintf(lbl, sizeof(lbl), "%d", deg / 10);
                 if (deg == 0) canvas->drawString("N", lx, ly);
@@ -156,7 +156,7 @@ public:
         // Heading readout
         canvas->setTextDatum(middle_center);
         canvas->setTextColor(COLOR_VALUE);
-        canvas->setTextSize(1.0);
+        canvas->setTextSize(1.3);
         char buf[8];
         snprintf(buf, sizeof(buf), "%03d", (int)heading % 360);
         canvas->drawString(buf, cx, cy + DIAL_RADIUS - 18);

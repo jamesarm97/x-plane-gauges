@@ -6,7 +6,12 @@ void WiFiManager::begin(const WiFiCredential* networks, int count) {
     for (int i = 0; i < count; i++) {
         _wifiMulti.addAP(networks[i].ssid, networks[i].password);
     }
+    _connectStartTime = millis();
     _wifiMulti.run();
+}
+
+void WiFiManager::addNetwork(const char* ssid, const char* password) {
+    _wifiMulti.addAP(ssid, password);
 }
 
 bool WiFiManager::isConnected() {
@@ -36,7 +41,14 @@ void WiFiManager::drawStatus(LGFX_Sprite& fb) {
         fb.drawString("WiFi Connected", cx, cy - 40);
         fb.setTextColor(COLOR_LABEL);
         fb.setTextSize(2.5);
-        fb.drawString(WiFi.localIP().toString().c_str(), cx, cy + 25);
+        fb.drawString(WiFi.localIP().toString().c_str(), cx, cy + 10);
+
+        // Show web UI URL
+        fb.setTextColor(COLOR_DIAL_RIM);
+        fb.setTextSize(1.8);
+        char urlBuf[48];
+        snprintf(urlBuf, sizeof(urlBuf), "Web UI: http://%s", WiFi.localIP().toString().c_str());
+        fb.drawString(urlBuf, cx, cy + 55);
     } else {
         fb.setTextColor(COLOR_ARC_YELLOW);
         fb.setTextSize(3.0);
